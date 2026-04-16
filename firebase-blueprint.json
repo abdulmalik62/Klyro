@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "Stores user profile information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["owner", "teacher", "parent"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "students": {
+      "title": "Student",
+      "description": "Stores student information and parent contact details.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "rollNumber": { "type": "string" },
+        "parentEmail": { "type": "string", "format": "email" },
+        "parentPhone": { "type": "string" },
+        "classId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "rollNumber", "parentPhone", "classId"]
+    },
+    "classes": {
+      "title": "Class",
+      "description": "Stores class information and assigned subjects.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "subjects": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["name", "teacherId"]
+    },
+    "sessions": {
+      "title": "Session",
+      "description": "Stores information about a specific class session.",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string" },
+        "subject": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "date": { "type": "number" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" }
+      },
+      "required": ["classId", "subject", "teacherId", "date"]
+    },
+    "attendance": {
+      "title": "Attendance Record",
+      "description": "Stores attendance status for a student in a session.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "studentId": { "type": "string" },
+        "status": { "type": "string", "enum": ["present", "absent"] },
+        "remarks": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["sessionId", "studentId", "status", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "users",
+      "description": "User profiles"
+    },
+    "/students/{studentId}": {
+      "schema": "students",
+      "description": "Student records"
+    },
+    "/classes/{classId}": {
+      "schema": "classes",
+      "description": "Class definitions"
+    },
+    "/sessions/{sessionId}": {
+      "schema": "sessions",
+      "description": "Class sessions"
+    },
+    "/attendance/{recordId}": {
+      "schema": "attendance",
+      "description": "Attendance records"
+    }
+  }
+}

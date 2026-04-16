@@ -1,0 +1,6 @@
+{
+  "name": "Student Attendance Management System",
+  "description": "A comprehensive SaaS platform for managing student attendance, subjects, and sessions with WhatsApp integration and role-based access for owners, teachers, and parents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
