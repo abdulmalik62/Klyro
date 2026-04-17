@@ -49,6 +49,8 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const menuItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['owner', 'teacher', 'parent'] },
     { to: '/students', icon: Users, label: 'Student Directory', roles: ['owner', 'teacher'] },
+    { to: '/teachers', icon: Users, label: 'Teacher Directory', roles: ['owner', 'teacher'] },
+    { to: '/academic-config', icon: BookOpen, label: 'Academic Setup', roles: ['owner', 'teacher'] },
     { to: '/classes', icon: BookOpen, label: 'Subjects & Sessions', roles: ['owner', 'teacher'] },
     { to: '/attendance', icon: Calendar, label: 'Daily Attendance', roles: ['owner', 'teacher'] },
   ].filter(item => profile && item.roles.includes(profile.role));
@@ -87,7 +89,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           </nav>
 
           <div className="p-6 border-t border-white/10">
-            <div className="text-[11px] text-[#4b5563] uppercase tracking-wider font-bold">System v2.4.1</div>
+            <div className="text-[11px] text-[#4b5563] uppercase tracking-wider font-bold">Powered by Klyro</div>
           </div>
         </div>
       </aside>
@@ -103,9 +105,9 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
               <Menu size={20} />
             </button>
             <div className="hidden sm:flex items-center gap-4 text-[14px]">
-              <span className="text-[#6b7280]">Academic Year 2023-24</span>
+              <span className="text-[#6b7280]">AN Institue</span>
               <span className="text-[#e5e7eb]">|</span>
-              <span className="font-semibold text-[#1f2937]">Grade 10 - Section A</span>
+              <span className="font-semibold text-[#1f2937]">Way to Success</span>
             </div>
           </div>
           

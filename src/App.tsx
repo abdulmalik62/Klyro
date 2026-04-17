@@ -12,6 +12,8 @@ import { Dashboard } from './pages/Dashboard';
 import { StudentManagement } from './pages/StudentManagement';
 import { ClassManagement } from './pages/ClassManagement';
 import { AttendancePage } from './pages/AttendancePage';
+import { Teachers } from './pages/Teachers';
+import AcademicConfig from './pages/AcademicConfig';
 
 export default function App() {
   return (
@@ -48,6 +50,22 @@ export default function App() {
             <ProtectedRoute allowedRoles={['owner', 'teacher']}>
               <DashboardLayout>
                 <AttendancePage />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/teachers" element={
+            <ProtectedRoute allowedRoles={['owner', 'teacher']}>
+              <DashboardLayout>
+                <Teachers />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/academic-config" element={
+            <ProtectedRoute allowedRoles={['owner', 'teacher']}>
+              <DashboardLayout>
+                <AcademicConfig />
               </DashboardLayout>
             </ProtectedRoute>
           } />

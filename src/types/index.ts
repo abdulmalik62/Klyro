@@ -43,3 +43,37 @@ export interface AttendanceRecord {
   remarks?: string;
   timestamp: number;
 }
+
+export interface Teacher {
+  id: string;
+  name: string;
+  phone: string;
+  qualification: string;
+  experience: number;
+  majorSubjectIds: string[];  // Subject IDs
+  otherSubjectIds: string[];  // Subject IDs
+  address?: string;
+  createdAt: number;
+}
+
+export interface Subject {
+  id: string;
+  name: string;
+  code?: string;
+  createdAt: number;
+}
+
+export interface Session {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  createdAt: number;
+}
+
+export interface Grade {
+  id: string;
+  name: string;
+  section?: string;
+  createdAt: number;
+}
