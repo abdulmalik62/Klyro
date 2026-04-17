@@ -10,12 +10,37 @@ export interface UserProfile {
 
 export interface Student {
   id: string;
+
+  // Basic Details
   name: string;
-  rollNumber: string;
-  parentEmail: string;
-  parentPhone: string;
-  classId: string;
-  createdAt: number;
+  rollNumber?: string;
+  fatherName?: string;
+  motherName?: string;
+  guardianName?: string;
+
+  fatherPhone?: string;
+  motherPhone?: string;
+  guardianPhone?: string;
+
+  parentEmail?: string;
+  preferredContact: 'father' | 'mother' | 'guardian';
+
+  age?: number;
+  sex?: 'male' | 'female' | 'other';
+  address?: string;
+
+  // Academic Details
+  gradeId?: string;
+  school?: string;
+  hscGroup?: string;
+
+  // Enrollment
+  ourGradeId: string;
+  subjectIds: string[];
+  sessionIds: string[];
+
+  // Metadata
+  createdAt: string;
 }
 
 export interface Class {
@@ -77,3 +102,4 @@ export interface Grade {
   section?: string;
   createdAt: number;
 }
+
