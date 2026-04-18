@@ -1,6 +1,4 @@
 # 🎓 AcadGrid — Student Attendance & Academic Management Platform
-
-
 ---
 
 ## 🚀 Overview
