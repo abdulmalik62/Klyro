@@ -43,4 +43,49 @@
   .status-absent {
     @apply bg-red-50 text-red-600;
   }
+
+  /* Form Utilities for Student/Teacher Modals */
+  .form-section {
+    @apply border border-[#e5e7eb] rounded-xl p-6 shadow-sm bg-white/80 backdrop-blur-sm;
+  }
+
+  .section-header {
+    @apply flex items-center gap-2 mb-4;
+  }
+
+  .section-title {
+    @apply text-lg font-bold text-[#1f2937];
+  }
+
+  .form-label {
+    @apply text-[12px] font-bold text-[#6b7280] uppercase tracking-tight;
+  }
+
+  .form-input {
+    @apply w-full px-3 py-2 border border-[#e5e7eb] rounded-lg text-[14px] focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 transition-all resize-none;
+  }
+
+  .form-input-error {
+    @apply border-red-500 focus:ring-red-500 focus:border-red-500;
+  }
+
+  .input-icon {
+    @apply absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af] pointer-events-none;
+  }
+
+  .input-with-icon {
+    @apply relative pl-10;
+  }
+
+  .checkbox-list {
+    @apply space-y-2 max-h-32 overflow-y-auto border border-[#e5e7eb] rounded-lg p-3 bg-white;
+  }
+
+  .checkbox-item {
+    @apply flex items-center gap-2 p-1 rounded cursor-pointer hover:bg-gray-50;
+  }
+
+  .declaration-section {
+    @apply border border-[#e5e7eb] rounded-xl p-6 bg-gradient-to-r from-gray-50 to-white;
+  }
 }
