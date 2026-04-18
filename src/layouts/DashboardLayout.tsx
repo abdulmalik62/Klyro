@@ -68,7 +68,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       <header className="h-[64px] bg-white border-b border-[#e5e7eb] flex items-center justify-between px-4 sm:px-8 z-50 shadow-sm">
         <div className="flex items-center gap-4 flex-shrink-0">
           <img 
-            src="/an_t_logo.png" 
+            src="../../an_t_logo.png" 
             alt="AN Logo" 
             className="h-15 w-auto"
           />
