@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 import { 
@@ -9,8 +9,9 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { studentService, classService } from '../services/firestore';
-import { Student, Class } from '../types';
+import { studentService, classService, attendanceService } from '../services/firestore';
+import type { Student, Class, AttendanceRecord } from '../types';
+import { formatLocalYmd } from '../lib/attendanceScheduleUtils';
 
 const StatCard = ({ label, value, colorClass }: any) => (
   <motion.div 
@@ -25,15 +26,30 @@ const StatCard = ({ label, value, colorClass }: any) => (
 export const Dashboard: React.FC = () => {
   const { profile } = useAuth();
   const [stats, setStats] = useState({ students: 0, classes: 0 });
+  const [attendanceToday, setAttendanceToday] = useState<AttendanceRecord[]>([]);
 
   useEffect(() => {
     const unsubStudents = studentService.subscribe(s => setStats(prev => ({ ...prev, students: s.length })));
     const unsubClasses = classService.subscribe(c => setStats(prev => ({ ...prev, classes: c.length })));
+    const unsubAttendance = attendanceService.subscribe((records) => {
+      const ymd = formatLocalYmd(new Date());
+      setAttendanceToday(records.filter((a) => a.date === ymd));
+    });
     return () => {
       unsubStudents();
       unsubClasses();
+      unsubAttendance();
     };
   }, []);
+
+  const presentTodayCount = useMemo(
+    () => attendanceToday.filter((a) => a.status === 'present').length,
+    [attendanceToday]
+  );
+  const absentTodayCount = useMemo(
+    () => attendanceToday.filter((a) => a.status === 'absent').length,
+    [attendanceToday]
+  );
 
   if (profile?.role === 'parent') {
     return (
@@ -62,8 +78,16 @@ export const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatCard label="Total Students" value={stats.students.toString().padStart(2, '0')} />
         <StatCard label="Active Classes" value={stats.classes.toString().padStart(2, '0')} />
-        <StatCard label="Present Today" value="28" colorClass="text-[#10b981]" />
-        <StatCard label="Absent" value="04" colorClass="text-[#ef4444]" />
+        <StatCard
+          label="Present Today"
+          value={String(presentTodayCount).padStart(2, '0')}
+          colorClass="text-[#10b981]"
+        />
+        <StatCard
+          label="Absent Today"
+          value={String(absentTodayCount).padStart(2, '0')}
+          colorClass="text-[#ef4444]"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

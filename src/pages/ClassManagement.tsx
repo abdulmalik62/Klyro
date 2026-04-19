@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Plus, Search, Edit2, Trash2, X, Table2, Grid, BookOpen, User, Clock, Users, AlertCircle, Eye, Calendar } from 'lucide-react';
 import { 
-  classService, studentService, teacherService, subjectService, sessionConfigService, gradeService, classScheduleService 
+  classService, studentService, teacherService, subjectService, sessionConfigService, gradeService, classScheduleService, attendanceService 
 } from '../services/firestore';
-import type { Class, Student, Teacher, Subject, Session, Grade, ClassSchedule } from '../types';
+import type { Class, Student, Teacher, Subject, Session, Grade, ClassSchedule, AttendanceRecord } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { appToasts } from '../lib/appToasts';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { cn } from '../lib/utils';
+import { formatLocalYmd, activeClassIdsForDate } from '../lib/attendanceScheduleUtils';
 
 export const ClassManagement: React.FC = () => {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -30,6 +32,7 @@ export const ClassManagement: React.FC = () => {
   const [classIdToDelete, setClassIdToDelete] = useState<string | null>(null);
 
   const [schedules, setSchedules] = useState<ClassSchedule[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [addScheduleOpen, setAddScheduleOpen] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({
     startDate: '',
@@ -133,6 +136,7 @@ export const ClassManagement: React.FC = () => {
     const unsubSessions = sessionConfigService.subscribe(setSessions);
     const unsubGrades = gradeService.subscribe(setGrades);
     const unsubSchedules = classScheduleService.subscribe(setSchedules);
+    const unsubAttendance = attendanceService.subscribe(setAttendanceRecords);
     
     return () => {
       unsubClasses();
@@ -142,6 +146,7 @@ export const ClassManagement: React.FC = () => {
       unsubSessions();
       unsubGrades();
       unsubSchedules();
+      unsubAttendance();
     };
   }, []);
 
@@ -431,6 +436,35 @@ useEffect(() => {
     return cls.studentIds
       .map(id => students.find(s => s.id === id))
       .filter((s): s is Student => s !== undefined);
+  };
+
+  const todayYmd = formatLocalYmd(new Date());
+  const activeClassIdsToday = useMemo(
+    () => activeClassIdsForDate(schedules, todayYmd),
+    [schedules, todayYmd]
+  );
+
+  const attendanceForClassToday = useCallback(
+    (classId: string, studentId: string) =>
+      attendanceRecords.find(
+        (a) => a.classId === classId && a.studentId === studentId && a.date === todayYmd
+      ),
+    [attendanceRecords, todayYmd]
+  );
+
+  const saveAttendanceForStudent = async (cls: Class, student: Student, status: 'present' | 'absent') => {
+    try {
+      await attendanceService.upsert({
+        classId: cls.id,
+        studentId: student.id,
+        date: todayYmd,
+        sessionId: cls.sessionId,
+        status,
+        timestamp: Date.now(),
+      });
+    } catch {
+      appToasts.attendanceFailed();
+    }
   };
 
   return (
@@ -906,6 +940,11 @@ useEffect(() => {
                       <div>
                         <h4 className="text-lg font-bold text-[#1f2937]">Students in this Class ({getStudentCount(selectedClass.studentIds)})</h4>
                         <p className="text-[#6b7280] text-sm">All students assigned to this class session</p>
+                        {activeClassIdsToday.has(selectedClass.id) ? (
+                          <p className="mt-1 text-[11px] font-medium text-emerald-700">Scheduled today — you can mark attendance below.</p>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-[#94a3b8]">Attendance toggles appear when this class is on today&apos;s schedule.</p>
+                        )}
                       </div>
                     </div>
                     
@@ -917,19 +956,56 @@ useEffect(() => {
                       </div>
                     ) : (
                       <div className="max-h-96 overflow-y-auto space-y-2">
-                        {getStudentsInClass(selectedClass).map((student) => (
-                          <div key={student.id} className="flex items-center gap-3 p-3 bg-gray-50/50 hover:bg-gray-50 rounded-lg border border-[#f3f4f6]">
-                            <div className="w-10 h-10 bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                              {student.name.charAt(0).toUpperCase()}
+                        {getStudentsInClass(selectedClass).map((student) => {
+                          const rec = attendanceForClassToday(selectedClass.id, student.id);
+                          const canMark = activeClassIdsToday.has(selectedClass.id);
+                          return (
+                            <div
+                              key={student.id}
+                              className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-[#f3f4f6] bg-gray-50/50 hover:bg-gray-50"
+                            >
+                              <div className="flex min-w-0 flex-1 items-center gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-[#3b82f6] to-[#1d4ed8] text-sm font-bold text-white">
+                                  {student.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-bold text-[#1f2937]">{student.name}</p>
+                                  {('preferredPhone' in student && student.preferredPhone) && (
+                                    <p className="truncate text-sm text-[#6b7280]">{student.preferredPhone as string}</p>
+                                  )}
+                                </div>
+                              </div>
+                              {canMark ? (
+                                <div className="flex shrink-0 gap-1 rounded-lg bg-[#f1f5f9] p-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => saveAttendanceForStudent(selectedClass, student, 'present')}
+                                    className={cn(
+                                      'rounded-md px-3 py-1.5 text-[11px] font-bold transition-colors',
+                                      rec?.status === 'present'
+                                        ? 'bg-emerald-500 text-white shadow-sm'
+                                        : 'text-[#64748b] hover:bg-white'
+                                    )}
+                                  >
+                                    Present
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => saveAttendanceForStudent(selectedClass, student, 'absent')}
+                                    className={cn(
+                                      'rounded-md px-3 py-1.5 text-[11px] font-bold transition-colors',
+                                      rec?.status === 'absent'
+                                        ? 'bg-red-500 text-white shadow-sm'
+                                        : 'text-[#64748b] hover:bg-white'
+                                    )}
+                                  >
+                                    Absent
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-[#1f2937] truncate">{student.name}</p>
-                              {('preferredPhone' in student && student.preferredPhone) && (
-                                <p className="text-[#6b7280] text-sm truncate">{student.preferredPhone as string}</p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

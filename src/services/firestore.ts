@@ -1,5 +1,13 @@
 import { mockStorage } from './mockStorage';
-import { Student, Class, AttendanceRecord, Teacher, Subject, Grade, ClassSchedule } from '../types';
+import {
+  Student,
+  Class,
+  AttendanceRecord,
+  Teacher,
+  Subject,
+  Grade,
+  ClassSchedule,
+} from '../types';
 import type { Session as ConfigSession } from '../types';
 
 // Students
@@ -62,31 +70,37 @@ export const sessionService = {
 };
 
 
-// Attendance
+// Attendance (per student + class + local date)
 export const attendanceService = {
-  mark: async (record: Omit<AttendanceRecord, 'id'>) => {
-    const attendance = mockStorage.getCollection('attendance');
-    const existing = attendance.find((a: any) => 
-      a.sessionId === record.sessionId && a.studentId === record.studentId
+  subscribe: (callback: (records: AttendanceRecord[]) => void) => {
+    const tick = () => callback(mockStorage.getCollection('attendance') as AttendanceRecord[]);
+    const interval = setInterval(tick, 1000);
+    tick();
+    return () => clearInterval(interval);
+  },
+  upsert: async (record: Omit<AttendanceRecord, 'id' | 'timestamp'> & { timestamp?: number }) => {
+    const attendance = mockStorage.getCollection('attendance') as AttendanceRecord[];
+    const existing = attendance.find(
+      (a) => a.studentId === record.studentId && a.classId === record.classId && a.date === record.date
     );
-    
+    const payload: Omit<AttendanceRecord, 'id'> = {
+      ...record,
+      timestamp: record.timestamp ?? Date.now(),
+    };
     if (existing) {
-      mockStorage.updateItem('attendance', existing.id, record);
+      mockStorage.updateItem('attendance', existing.id, payload);
     } else {
-      mockStorage.addItem('attendance', record);
+      mockStorage.addItem('attendance', payload);
     }
   },
   getSessionAttendance: (sessionId: string, callback: (records: AttendanceRecord[]) => void) => {
     const interval = setInterval(() => {
-      const all = mockStorage.getCollection('attendance');
-      callback(all.filter((a: any) => a.sessionId === sessionId));
+      const all = mockStorage.getCollection('attendance') as AttendanceRecord[];
+      callback(all.filter((a) => a.sessionId === sessionId));
     }, 1000);
     return () => clearInterval(interval);
-  }
+  },
 };
-
-// Teachers
-import { Teacher } from '../types';
 
 export const teacherService = {
   getAll: async () => mockStorage.getCollection('teachers'),
@@ -101,10 +115,6 @@ export const teacherService = {
     return () => clearInterval(interval);
   }
 };
-
-
-// Academic Config Services
-import { Subject, Session, Grade } from '../types';
 
 export const subjectService = {
   getAll: async () => mockStorage.getCollection('subjects'),
@@ -122,10 +132,11 @@ export const subjectService = {
 
 export const sessionConfigService = {
   getAll: async () => mockStorage.getCollection('config_sessions'),
-  add: async (session: Omit<Session, 'id'>) => mockStorage.addItem('config_sessions', session),
-  update: async (id: string, session: Partial<Session>) => mockStorage.updateItem('config_sessions', id, session),
+  add: async (session: Omit<ConfigSession, 'id'>) => mockStorage.addItem('config_sessions', session),
+  update: async (id: string, session: Partial<ConfigSession>) =>
+    mockStorage.updateItem('config_sessions', id, session),
   delete: async (id: string) => mockStorage.deleteItem('config_sessions', id),
-  subscribe: (callback: (sessions: Session[]) => void) => {
+  subscribe: (callback: (sessions: ConfigSession[]) => void) => {
     const interval = setInterval(() => {
       callback(mockStorage.getCollection('config_sessions'));
     }, 1000);

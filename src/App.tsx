@@ -12,7 +12,7 @@ import { LoginPage } from './pages/LoginPage';
 import { Dashboard } from './pages/Dashboard';
 import { StudentManagement } from './pages/StudentManagement';
 import { ClassManagement } from './pages/ClassManagement';
-import { AttendancePage } from './pages/AttendancePage';
+import { Attendance } from './pages/Attendance';
 import { Teachers } from './pages/Teachers';
 import AcademicConfig from './pages/AcademicConfig';
 import { Schedules } from './pages/Schedules';
@@ -60,7 +60,7 @@ export default function App() {
           <Route path="/attendance" element={
             <ProtectedRoute allowedRoles={['owner', 'teacher']}>
               <DashboardLayout>
-                <AttendancePage />
+                <Attendance />
               </DashboardLayout>
             </ProtectedRoute>
           } />

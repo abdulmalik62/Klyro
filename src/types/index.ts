@@ -73,10 +73,15 @@ export interface Session {
   endTime: string;
 }
 
+/** Daily attendance per student per class (config session id for filtering/reporting). */
 export interface AttendanceRecord {
   id: string;
-  sessionId: string;
+  classId: string;
   studentId: string;
+  /** Local calendar date YYYY-MM-DD */
+  date: string;
+  /** Config session template id (same as Class.sessionId). */
+  sessionId: string;
   status: 'present' | 'absent';
   remarks?: string;
   timestamp: number;
