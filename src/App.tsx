@@ -16,6 +16,7 @@ import { Attendance } from './pages/Attendance';
 import { Teachers } from './pages/Teachers';
 import AcademicConfig from './pages/AcademicConfig';
 import { Schedules } from './pages/Schedules';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   return (
@@ -25,11 +26,13 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           
-          <Route path="/" element={
+<Route path="/" element={
             <ProtectedRoute>
-              <DashboardLayout>
-                <Dashboard />
-              </DashboardLayout>
+              <ErrorBoundary>
+                <DashboardLayout>
+                  <Dashboard />
+                </DashboardLayout>
+              </ErrorBoundary>
             </ProtectedRoute>
           } />
 

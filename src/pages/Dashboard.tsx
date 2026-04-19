@@ -50,24 +50,37 @@ export const Dashboard: React.FC = () => {
   const [schedules, setSchedules] = useState<ClassSchedule[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    const unsubStudents = studentService.subscribe(setStudents);
-    const unsubTeachers = teacherService.subscribe(setTeachers);
-    const unsubClasses = classService.subscribe(setClasses);
-    const unsubSchedules = classScheduleService.subscribe(setSchedules);
-    const unsubGrades = gradeService.subscribe(setGrades);
-    const unsubSubjects = subjectService.subscribe(setSubjects);
-    const unsubAttendance = attendanceService.subscribe(setAllAttendance);
-    return () => {
-      unsubStudents();
-      unsubTeachers();
-      unsubClasses();
-      unsubSchedules();
-      unsubGrades();
-      unsubSubjects();
-      unsubAttendance();
-    };
+    try {
+      const unsubStudents = studentService.subscribe(setStudents);
+      const unsubTeachers = teacherService.subscribe(setTeachers);
+      const unsubClasses = classService.subscribe(setClasses);
+      const unsubSchedules = classScheduleService.subscribe(setSchedules);
+      const unsubGrades = gradeService.subscribe(setGrades);
+      const unsubSubjects = subjectService.subscribe(setSubjects);
+      const unsubAttendance = attendanceService.subscribe(setAllAttendance);
+      
+      // Initial data load complete
+      const timer = setTimeout(() => {
+        setDataLoading(false);
+      }, 500);
+      
+      return () => {
+        clearTimeout(timer);
+        unsubStudents();
+        unsubTeachers();
+        unsubClasses();
+        unsubSchedules();
+        unsubGrades();
+        unsubSubjects();
+        unsubAttendance();
+      };
+    } catch (error) {
+      console.error('Dashboard subscriptions failed:', error);
+      setDataLoading(false);
+    }
   }, []);
 
   const todayYmd = formatLocalYmd(new Date());
@@ -119,6 +132,17 @@ export const Dashboard: React.FC = () => {
       return classAttPct < 50 || classTotal === 0;
     });
   }, [todayClasses, todayAtts]);
+
+  if (dataLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (profile?.role === 'parent') {
     return (

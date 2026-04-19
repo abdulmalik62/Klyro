@@ -33,20 +33,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signIn = async () => {
-    const mockUser = {
-      uid: 'mock-uid-123',
-      email: 'admin@example.com',
-      displayName: 'Admin User',
-    };
-    localStorage.setItem('mock_user', JSON.stringify(mockUser));
-    setUser(mockUser);
-    setProfile({
-      uid: mockUser.uid,
-      email: mockUser.email,
-      displayName: mockUser.displayName,
-      role: 'owner',
-      createdAt: Date.now()
-    });
+    setLoading(true);
+    try {
+      // Simulate async auth
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const mockUser = {
+        uid: 'mock-uid-123',
+        email: 'admin@example.com',
+        displayName: 'Admin User',
+      };
+      localStorage.setItem('mock_user', JSON.stringify(mockUser));
+      setUser(mockUser);
+      setProfile({
+        uid: mockUser.uid,
+        email: mockUser.email,
+        displayName: mockUser.displayName,
+        role: 'owner',
+        createdAt: Date.now()
+      });
+      
+      // Ensure state updates before resolving
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const logout = async () => {
