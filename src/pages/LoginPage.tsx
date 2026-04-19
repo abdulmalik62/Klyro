@@ -25,16 +25,16 @@ export const LoginPage: React.FC = () => {
 
   const slides = [
     {
-      title: "Powered by Acadgrid",
-      desc: "Enterprise Educational Solution",
+      title: "Enterprise Educational Solution",
+      desc: "A Reliable Edu Data Platform",
     },
     {
-      title: "An Indian Education Solution",
-      desc: "Product from Tamil Developer",
+      title: "From Notebooks to Laptops",
+      desc: "Digitalizingf Edu Data",
     },
     {
       title: "Safe and Secure Access",
-      desc: "RBAC Control",
+      desc: "Controlled access and Secure Transactions",
     },
   ];
 
@@ -91,6 +91,19 @@ export const LoginPage: React.FC = () => {
 
         {/* BOTTOM SLIDER AREA */}
         <div className="absolute bottom-[60px] left-0 right-0 px-8">
+          <div className="text-xs text-gray-700 max-w-[65%] leading-snug transition-all duration-500">
+            <p className="text-sm text-gray-400">
+              Powered by{' '}
+              <a
+                href="https://yourdomain.com" // replace with your site
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold text-[#111827] hover:opacity-80 transition"
+              >
+                AcadGrid
+              </a>
+            </p>
+          </div>
 
           {/* SLIDER */}
           <div className="bg-gray-100 rounded-lg p-4 flex items-center justify-between overflow-hidden">
