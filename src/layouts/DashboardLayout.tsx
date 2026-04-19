@@ -69,13 +69,9 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
   const menuItems = [
     { to: '/', icon: ChalkboardSimple, label: 'Dashboard', roles: ['owner', 'teacher', 'parent'] },
-
-    { to: '/students', icon: Student, label: 'Student Management', roles: ['owner', 'teacher'] },
-
-    { to: '/teachers', icon: ChalkboardTeacher, label: 'Teacher Management', roles: ['owner', 'teacher'] },
-
     { to: '/academic-config', icon: GraduationCap, label: 'Academic Setup', roles: ['owner', 'teacher'] },
-
+     { to: '/teachers', icon: ChalkboardTeacher, label: 'Teacher Management', roles: ['owner', 'teacher'] },
+    { to: '/students', icon: Student, label: 'Student Management', roles: ['owner', 'teacher'] },
     { to: '/classes', icon: Notebook, label: 'Class Management', roles: ['owner', 'teacher'] },
 
     { to: '/schedules', icon: Calendar, label: 'Schedules', roles: ['owner', 'teacher'] },
