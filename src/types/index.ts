@@ -45,9 +45,11 @@ export interface Student {
 
 export interface Class {
   id: string;
-  name: string;
+  subjectId: string;
   teacherId: string;
-  subjects: string[];
+  sessionId: string;
+  studentIds: string[];
+  createdAt: string;
 }
 
 export interface Session {

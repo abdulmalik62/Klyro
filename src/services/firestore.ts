@@ -21,6 +21,8 @@ export const studentService = {
 export const classService = {
   getAll: async () => mockStorage.getCollection('classes'),
   add: async (cls: Omit<Class, 'id'>) => mockStorage.addItem('classes', cls),
+  update: async (id: string, cls: Partial<Class>) => mockStorage.updateItem('classes', id, cls),
+  delete: async (id: string) => mockStorage.deleteItem('classes', id),
   subscribe: (callback: (classes: Class[]) => void) => {
     const interval = setInterval(() => {
       callback(mockStorage.getCollection('classes'));
