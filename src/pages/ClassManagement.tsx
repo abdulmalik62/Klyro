@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Plus, Search, Edit2, Trash2, X, Table2, Grid, BookOpen, User, Clock, Users, AlertCircle, Eye } from 'lucide-react';
 import { 
-  classService, studentService, teacherService, subjectService, sessionConfigService 
+  classService, studentService, teacherService, subjectService, sessionConfigService, gradeService 
 } from '../services/firestore';
-import type { Class, Student, Teacher, Subject, Session } from '../types';
+import type { Class, Student, Teacher, Subject, Session, Grade } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const ClassManagement: React.FC = () => {
@@ -12,6 +12,8 @@ export const ClassManagement: React.FC = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]); 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [selectedGrade, setSelectedGrade] = useState('');
   
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,6 +42,7 @@ export const ClassManagement: React.FC = () => {
   const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
   const teacherMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
   const sessionMap = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
+  const gradeMap = useMemo(() => new Map(grades.map(g => [g.id, g.name])), [grades]);
 
   // Subscriptions
   useEffect(() => {
@@ -48,6 +51,7 @@ export const ClassManagement: React.FC = () => {
     const unsubTeachers = teacherService.subscribe(setTeachers);
     const unsubSubjects = subjectService.subscribe(setSubjects);
     const unsubSessions = sessionConfigService.subscribe(setSessions);
+    const unsubGrades = gradeService.subscribe(setGrades);
     
     return () => {
       unsubClasses();
@@ -55,16 +59,18 @@ export const ClassManagement: React.FC = () => {
       unsubTeachers();
       unsubSubjects();
       unsubSessions();
+      unsubGrades();
     };
   }, []);
 
   // Search filtering
   const filteredClasses = useCallback(() => 
     classes.filter(cls => 
+      gradeMap.get(cls.gradeId)?.toLowerCase()?.includes(searchTerm.toLowerCase()) ||
       subjectMap.get(cls.subjectId)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       teacherMap.get(cls.teacherId)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       sessionMap.get(cls.sessionId)?.toLowerCase().includes(searchTerm.toLowerCase())
-    ), [classes, searchTerm, subjectMap, teacherMap, sessionMap]
+    ), [classes, searchTerm, gradeMap, subjectMap, teacherMap, sessionMap]
   );
 
   const currentClasses = filteredClasses();
@@ -80,11 +86,14 @@ export const ClassManagement: React.FC = () => {
     );
   }, [sessions, classes]);
 
-  const getEligibleStudents = useCallback((subjectId: string, sessionId: string): Student[] => {
+  const getEligibleStudents = useCallback((subjectId: string, sessionId: string, gradeOverride?: string): Student[] => {
+    const gradeId = gradeOverride !== undefined ? gradeOverride : selectedGrade;
     return students.filter(s => 
-      s.subjectIds.includes(subjectId) && s.sessionIds.includes(sessionId)
+      s.subjectIds.includes(subjectId) &&
+      s.sessionIds.includes(sessionId) &&
+      s.gradeId === gradeId
     );
-  }, [students]);
+  }, [students, selectedGrade]);
 
   // Update filtering when selections change
 useEffect(() => {
@@ -126,10 +135,10 @@ useEffect(() => {
 
   useEffect(() => {
     if (formData.subjectId && formData.sessionId) {
-      const students = getEligibleStudents(formData.subjectId, formData.sessionId);
-      setEligibleStudents(students);
+      const list = getEligibleStudents(formData.subjectId, formData.sessionId);
+      setEligibleStudents(list);
     }
-  }, [formData.subjectId, formData.sessionId, getEligibleStudents]);
+  }, [formData.subjectId, formData.sessionId, selectedGrade, getEligibleStudents]);
 
   // Modal handlers
   const openViewModal = (cls: Class) => {
@@ -145,6 +154,7 @@ useEffect(() => {
   const openModal = (cls?: Class) => {
     if (cls) {
       setEditingClass(cls);
+      setSelectedGrade(cls.gradeId || '');
       setFormData({
         subjectId: cls.subjectId,
         teacherId: cls.teacherId,
@@ -154,9 +164,10 @@ useEffect(() => {
       // Trigger filtering
       setAvailableTeachers(getAvailableTeachers(cls.subjectId));
       setAvailableSessions(getAvailableSessions(cls.teacherId));
-      setEligibleStudents(getEligibleStudents(cls.subjectId, cls.sessionId));
+      setEligibleStudents(getEligibleStudents(cls.subjectId, cls.sessionId, cls.gradeId || ''));
     } else {
       setEditingClass(null);
+      setSelectedGrade('');
       setFormData({ subjectId: '', teacherId: '', sessionId: '', studentIds: [] });
       setAvailableTeachers([]);
       setAvailableSessions([]);
@@ -169,12 +180,14 @@ useEffect(() => {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingClass(null);
+    setSelectedGrade('');
     setFormData({ subjectId: '', teacherId: '', sessionId: '', studentIds: [] });
     setFormErrors({});
   };
 
   const validateForm = () => {
     const errors: Record<string, string> = {};
+    if (!selectedGrade) errors.grade = 'Grade is required';
     if (!formData.subjectId) errors.subjectId = 'Subject is required';
     if (!formData.teacherId) errors.teacherId = 'Teacher is required';
     if (!formData.sessionId) errors.sessionId = 'Session is required';
@@ -192,6 +205,7 @@ useEffect(() => {
 
     const classData: Omit<Class, 'id'> = {
       ...formData,
+      gradeId: selectedGrade,
       createdAt: editingClass?.createdAt || new Date().toISOString()
     };
 
@@ -273,7 +287,7 @@ useEffect(() => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" size={16} />
             <input 
               type="text"
-              placeholder="Search by subject, teacher or session..."
+              placeholder="Search by grade, subject, teacher or session..."
               className="w-full pl-10 pr-4 py-2 bg-white border border-[#e5e7eb] rounded-lg text-[14px] focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 transition-all"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -322,6 +336,7 @@ useEffect(() => {
                 <thead>
                   <tr className="bg-[#fafafa] text-[#6b7280] text-[11px] uppercase tracking-wider font-bold border-b border-[#e5e7eb]">
                     <th className="px-6 py-3 w-[80px]">ID</th>
+                    <th className="px-6 py-3 w-[120px]">Grade</th>
                     <th className="px-6 py-3 w-[180px]">Subject</th>
                     <th className="px-6 py-3 w-[160px]">Teacher</th>
                     <th className="px-6 py-3 w-[140px]">Session</th>
@@ -333,6 +348,11 @@ useEffect(() => {
                   {currentClasses.map((cls, idx) => (
                     <tr key={cls.id} className="hover:bg-gray-50/50 transition-colors">
                       <td className="px-6 py-3 font-mono text-[11px] text-[#6b7280]">C{1000 + idx}</td>
+                      <td className="px-6 py-3">
+                        <span className="font-bold text-[13px] text-[#1f2937]">
+                          {gradeMap.get(cls.gradeId) ?? '—'}
+                        </span>
+                      </td>
                       <td className="px-6 py-3">
                         <span className="font-bold text-[13px] text-[#1f2937]">
                           {subjectMap.get(cls.subjectId)}
@@ -379,7 +399,7 @@ useEffect(() => {
                   ))}
                   {currentClasses.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-[#6b7280]">
+                      <td colSpan={7} className="px-6 py-12 text-center text-[#6b7280]">
                         {searchTerm ? 'No classes match your search.' : 'No classes configured yet. Create your first class!'}
                       </td>
                     </tr>
@@ -396,6 +416,9 @@ useEffect(() => {
                   whileHover={{ y: -2 }}
                 >
                   <div className="space-y-3">
+                    <div className="text-xs font-semibold bg-blue-100 px-2 py-1 rounded inline-block">
+                      {gradeMap.get(cls.gradeId) ?? '—'}
+                    </div>
                     <div className="flex items-start justify-between">
                       <h3 className="font-bold text-lg text-[#1f2937] truncate flex-1">
                         {subjectMap.get(cls.subjectId)}
@@ -483,6 +506,32 @@ useEffect(() => {
               </div>
 
               <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                {/* Grade */}
+                <div className="border border-[#e5e7eb] rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <BookOpen size={20} className="text-[#3b82f6]" />
+                    <h4 className="text-lg font-bold text-[#1f2937]">Grade *</h4>
+                  </div>
+                  <div className="flex flex-wrap gap-4">
+                    {grades.map((g) => (
+                      <label key={g.id} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="classGrade"
+                          checked={selectedGrade === g.id}
+                          onChange={() => {
+                            setSelectedGrade(g.id);
+                            if (formErrors.grade) setFormErrors(prev => ({ ...prev, grade: '' }));
+                          }}
+                          className="w-4 h-4 text-[#3b82f6] border-gray-300 focus:ring-[#3b82f6]"
+                        />
+                        <span className="text-sm text-[#1f2937]">{g.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {formErrors.grade && <p className="text-red-500 text-[11px] mt-2">{formErrors.grade}</p>}
+                </div>
+
                 {/* Section 1: Subject + Teacher */}
                 <div className="border border-[#e5e7eb] rounded-xl p-6">
                   <div className="flex items-center gap-2 mb-4">
@@ -655,6 +704,12 @@ useEffect(() => {
                       <div>
                         <span className="text-[#6b7280] block mb-1 font-medium">Class Name</span>
                         <span className="font-bold text-[#1f2937]">{getClassName(selectedClass)}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block mb-1 font-medium">Grade</span>
+                        <span className="font-bold text-[#1f2937]">
+                          {gradeMap.get(selectedClass.gradeId) ?? '—'}
+                        </span>
                       </div>
                       <div>
                         <span className="text-[#6b7280] block mb-1 font-medium">Subject</span>
