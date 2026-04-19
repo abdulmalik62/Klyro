@@ -36,6 +36,7 @@ export interface Student {
 
   // Enrollment
   ourGradeId: string;
+  classId?: string | null;
   subjectIds: string[];
   sessionIds: string[];
 
@@ -45,6 +46,7 @@ export interface Student {
 
 export interface Class {
   id: string;
+  gradeId: string;
   subjectId: string;
   teacherId: string;
   sessionId: string;

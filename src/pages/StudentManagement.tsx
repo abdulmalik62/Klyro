@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Plus, Search, Edit2, Trash2, X, Table2, Grid, Users, Phone, BadgeCheck, Mail, Home, School, BookOpen, Calendar, Users2, ChevronRight } from 'lucide-react';
 import { 
-  studentService, gradeService, subjectService, sessionConfigService 
+  studentService, gradeService, subjectService, sessionConfigService, classService, teacherService
+
 } from '../services/firestore';
-import type { Student, Grade, Subject, Session as ConfigSession } from '../types';
+import type { Student, Grade, Subject, Session as ConfigSession, Class, Teacher } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const StudentManagement: React.FC = () => {
@@ -11,6 +12,10 @@ export const StudentManagement: React.FC = () => {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [sessions, setSessions] = useState<ConfigSession[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [availableClasses, setAvailableClasses] = useState<Class[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,6 +50,7 @@ export const StudentManagement: React.FC = () => {
   const gradeMap = useMemo(() => new Map(grades.map(g => [g.id, g.name])), [grades]);
   const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
   const sessionMap = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
+  const teacherMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
 
   // Subscriptions
   useEffect(() => {
@@ -52,11 +58,15 @@ export const StudentManagement: React.FC = () => {
     const unsubGrades = gradeService.subscribe(setGrades);
     const unsubSubjects = subjectService.subscribe(setSubjects);
     const unsubSessions = sessionConfigService.subscribe(setSessions);
+    const unsubClasses = classService.subscribe(setClasses);
+    const unsubTeachers = teacherService.subscribe(setTeachers);
     return () => {
       unsubStudents();
       unsubGrades();
       unsubSubjects();
       unsubSessions();
+      unsubClasses();
+      unsubTeachers();
     };
   }, []);
 
@@ -89,6 +99,27 @@ export const StudentManagement: React.FC = () => {
     sessionIds.slice(0, 2).map(id => sessionMap.get(id)).filter(Boolean).join(', ') +
     (sessionIds.length > 2 ? '...' : '');
 
+  const getAvailableClasses = useCallback((subjectIds: string[], sessionIds: string[]): Class[] => {
+    if (subjectIds.length === 0 || sessionIds.length === 0) return [];
+    return classes.filter(cls =>
+      subjectIds.includes(cls.subjectId) && sessionIds.includes(cls.sessionId)
+    );
+  }, [classes]);
+
+  useEffect(() => {
+    setAvailableClasses(getAvailableClasses(formData.subjectIds, formData.sessionIds));
+  }, [formData.subjectIds, formData.sessionIds, getAvailableClasses]);
+
+  const getClassDisplay = (cls: Class) => {
+    const subjectName = subjectMap.get(cls.subjectId) || 'Unknown';
+    const session = sessions.find(s => s.id === cls.sessionId);
+    const sessionName = sessionMap.get(cls.sessionId) || 'Unknown';
+    const teacherName = teacherMap.get(cls.teacherId) || 'Unknown';
+    const time = session ? `${session.startTime} - ${session.endTime}` : 'N/A';
+    const studentCount = cls.studentIds.length;
+    return { subjectName, sessionName, teacherName, time, studentCount };
+  };
+
   const openModal = (student?: Student) => {
     if (student) {
       setEditingStudent(student);
@@ -111,8 +142,10 @@ export const StudentManagement: React.FC = () => {
         hscGroup: student.hscGroup || '',
         ourGradeId: student.ourGradeId,
         subjectIds: student.subjectIds || [],
-        sessionIds: student.sessionIds || []
+        sessionIds: student.sessionIds || [],
+        classId: student.classId || null
       });
+      setSelectedClassId(student.classId || null);
     } else {
       setEditingStudent(null);
       setFormData({
@@ -191,8 +224,10 @@ export const StudentManagement: React.FC = () => {
       return;
     }
 
+    const studentId = editingStudent?.id || 'temp'; // temp for new
     const studentData: Omit<Student, 'id'> = {
       ...formData,
+      classId: selectedClassId || null,
       createdAt: editingStudent?.createdAt || new Date().toISOString(),
       subjectIds: formData.subjectIds,
       sessionIds: formData.sessionIds
@@ -204,6 +239,17 @@ export const StudentManagement: React.FC = () => {
       } else {
         await studentService.add(studentData);
       }
+
+      // Advanced: Auto-update class.studentIds if class assigned (for new students only, avoid duplicates for edits)
+      if (selectedClassId && !editingStudent) {
+        const targetClass = classes.find(c => c.id === selectedClassId);
+        if (targetClass && !targetClass.studentIds.includes(studentId)) {
+          await classService.update(selectedClassId, {
+            studentIds: [...targetClass.studentIds, studentId]
+          });
+        }
+      }
+
       closeModal();
     } catch (error) {
       console.error('Submit error:', error);
@@ -657,8 +703,63 @@ export const StudentManagement: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Section: Assign Class */}
+                <div className="border border-[#e5e7eb] rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="text-lg font-bold text-[#1f2937]">Assign Class</h4>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedClassId(null)}
+                      className="text-sm text-[#6b7280] underline hover:text-[#1f2937] hover:no-underline"
+                    >
+                      Assign Later
+                    </button>
+                  </div>
+
+                  {formData.subjectIds.length === 0 || formData.sessionIds.length === 0 ? (
+                    <div className="text-center py-8 text-[#6b7280]">
+                      Select subjects and sessions to see available classes
+                    </div>
+                  ) : availableClasses.length === 0 ? (
+                    <div className="text-center py-8 text-[#6b7280]">
+                      No matching classes available for selected subjects and sessions
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+                      {availableClasses.map((cls) => {
+                        const display = getClassDisplay(cls);
+                        const isSelected = selectedClassId === cls.id;
+                        return (
+                          <div 
+                            key={cls.id}
+                            className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-sm ${
+                              isSelected 
+                                ? 'border-blue-500 bg-blue-50 shadow-md' 
+                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="font-bold text-sm mb-1">
+                              {display.subjectName} - {display.sessionName}
+                            </div>
+                            <div className="text-xs text-gray-600 mb-1">Teacher: {display.teacherName}</div>
+                            <div className="text-xs text-gray-600 mb-1">Time: {display.time}</div>
+                            <div className="text-xs text-gray-600 mb-3">Students: {display.studentCount}</div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedClassId(cls.id)}
+                              className="w-full text-xs bg-blue-500 text-white py-1.5 px-3 rounded font-medium hover:bg-blue-600 transition-colors"
+                            >
+                              {isSelected ? 'Assigned ✓' : 'Assign'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {/* Section 4: Declaration */}
-                <div className="border border-[#e5e7eb] rounded-xl p-6 bg-gray-50">
+                <div className="border border-[#e5e7eb] rounded-xl p-6 bg-gray-50"> 
                   <div className="flex items-start gap-3">
                     <input
                       id="declaration"

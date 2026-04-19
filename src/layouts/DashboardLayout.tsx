@@ -1,14 +1,25 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  Users, 
-  BookOpen, 
-  Calendar, 
-  LogOut, 
-  ChevronLeft, 
+import {
+  LayoutDashboard,
+  Users,
+  BookOpen,
+  Calendar,
+  LogOut,
+  ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import {
+  House,
+  Student,
+  ChalkboardTeacher,
+  ChalkboardSimple,
+  UsersThree,
+  GraduationCap,
+  Notebook,
+  CalendarCheck,
+  SignOut
+} from "phosphor-react";
 import { useAuth } from '../context/AuthContext';
 import { cn } from '../lib/utils';
 
@@ -25,8 +36,8 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ to, icon: Icon, label, active
     to={to}
     className={cn(
       "flex items-center gap-3 px-4 py-3 text-[14px] transition-all border-l-4 rounded-r-lg mx-1 hover:bg-white/5",
-      active 
-        ? "bg-[#1f2937] text-white border-[#3b82f6]" 
+      active
+        ? "bg-[#1f2937] text-white border-[#3b82f6]"
         : "text-[#9ca3af] border-transparent hover:text-white"
     )}
   >
@@ -53,13 +64,19 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
   const sidebarWidth = isSidebarCollapsed ? 'w-16' : 'w-[240px]';
 
+
   const menuItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['owner', 'teacher', 'parent'] },
-    { to: '/students', icon: Users, label: 'Student Directory', roles: ['owner', 'teacher'] },
-    { to: '/teachers', icon: Users, label: 'Teacher Directory', roles: ['owner', 'teacher'] },
-    { to: '/academic-config', icon: BookOpen, label: 'Academic Setup', roles: ['owner', 'teacher'] },
-    { to: '/classes', icon: BookOpen, label: 'Subjects & Sessions', roles: ['owner', 'teacher'] },
-    { to: '/attendance', icon: Calendar, label: 'Daily Attendance', roles: ['owner', 'teacher'] },
+    { to: '/', icon: ChalkboardSimple, label: 'Dashboard', roles: ['owner', 'teacher', 'parent'] },
+
+    { to: '/students', icon: Student, label: 'Student Management', roles: ['owner', 'teacher'] },
+
+    { to: '/teachers', icon: ChalkboardTeacher, label: 'Teacher Management', roles: ['owner', 'teacher'] },
+
+    { to: '/academic-config', icon: GraduationCap, label: 'Academic Setup', roles: ['owner', 'teacher'] },
+
+    { to: '/classes', icon: Notebook, label: 'Class Management', roles: ['owner', 'teacher'] },
+
+    { to: '/attendance', icon: CalendarCheck, label: 'Attendance Management', roles: ['owner', 'teacher'] },
   ].filter(item => profile && item.roles.includes(profile.role));
 
   return (
@@ -67,9 +84,9 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       {/* Topbar */}
       <header className="h-[64px] bg-white border-b border-[#e5e7eb] flex items-center justify-between px-4 sm:px-8 z-50 shadow-sm">
         <div className="flex items-center gap-4 flex-shrink-0">
-          <img 
-            src="../assets/an_t_logo.png" 
-            alt="AN Logo" 
+          <img
+            src="../assets/an_t_logo.png"
+            alt="AN Logo"
             className="h-15 w-auto"
           />
           <div className="hidden md:flex items-center gap-4 text-[14px]">
@@ -78,7 +95,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
             <span className="font-semibold text-[#6b7280]">Way to Success</span>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-4">
           <div className="text-right hidden md:block">
             <div className="text-[13px] font-semibold text-[#1f2937]">{profile?.displayName}</div>
@@ -142,7 +159,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           <main className="flex-1 overflow-auto p-6 lg:p-8 bg-[#f3f4f6]">
             {children}
           </main>
-          
+
           {/* Footer (main only, adjusts with sidebar) */}
           <footer className={cn(
             "h-12 bg-white border-t border-[#e5e7eb] flex items-center justify-between px-6 text-sm text-[#6b7280] shadow-sm",
