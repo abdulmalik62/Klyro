@@ -1,10 +1,12 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Plus, Search, Edit2, Trash2, X, Table2, Grid, BookOpen, User, Clock, Users, AlertCircle, Eye } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Table2, Grid, BookOpen, User, Clock, Users, AlertCircle, Eye, Calendar } from 'lucide-react';
 import { 
-  classService, studentService, teacherService, subjectService, sessionConfigService, gradeService 
+  classService, studentService, teacherService, subjectService, sessionConfigService, gradeService, classScheduleService 
 } from '../services/firestore';
-import type { Class, Student, Teacher, Subject, Session, Grade } from '../types';
+import type { Class, Student, Teacher, Subject, Session, Grade, ClassSchedule } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { appToasts } from '../lib/appToasts';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 
 export const ClassManagement: React.FC = () => {
   const [classes, setClasses] = useState<Class[]>([]);
@@ -24,6 +26,17 @@ export const ClassManagement: React.FC = () => {
   // View modal state
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [classIdToDelete, setClassIdToDelete] = useState<string | null>(null);
+
+  const [schedules, setSchedules] = useState<ClassSchedule[]>([]);
+  const [addScheduleOpen, setAddScheduleOpen] = useState(false);
+  const [scheduleForm, setScheduleForm] = useState({
+    startDate: '',
+    endDate: '',
+    days: [] as string[],
+  });
+  const [scheduleFormErrors, setScheduleFormErrors] = useState<Record<string, string>>({});
 
   // Modal form state
   const [formData, setFormData] = useState({
@@ -40,9 +53,76 @@ export const ClassManagement: React.FC = () => {
 
   // Lookup maps
   const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
-  const teacherMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
+  const teacherMap = useMemo(
+    () => new Map(teachers.map((t) => [t.id, `${t.pronoun ?? 'Mr'}. ${t.name}`])),
+    [teachers]
+  );
   const sessionMap = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
   const gradeMap = useMemo(() => new Map(grades.map(g => [g.id, g.name])), [grades]);
+
+  const WEEKDAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+  const WEEKDAY_LABELS: Record<(typeof WEEKDAY_ORDER)[number], string> = {
+    Mon: 'Monday',
+    Tue: 'Tuesday',
+    Wed: 'Wednesday',
+    Thu: 'Thursday',
+    Fri: 'Friday',
+    Sat: 'Saturday',
+    Sun: 'Sunday',
+  };
+
+  const parseLocalDate = (yyyyMmDd: string): Date => {
+    const parts = yyyyMmDd.split('-').map(Number);
+    const [y, m, d] = parts;
+    if (!y || !m || !d) return new Date(NaN);
+    return new Date(y, m - 1, d);
+  };
+
+  const startOfToday = () => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  const rangesOverlap = (aStart: string, aEnd: string, bStart: string, bEnd: string) => {
+    const a1 = parseLocalDate(aStart).getTime();
+    const a2 = parseLocalDate(aEnd).getTime();
+    const b1 = parseLocalDate(bStart).getTime();
+    const b2 = parseLocalDate(bEnd).getTime();
+    if ([a1, a2, b1, b2].some((t) => Number.isNaN(t))) return false;
+    return a1 <= b2 && b1 <= a2;
+  };
+
+  const schedulesForSelectedClass = useMemo(
+    () => (selectedClass ? schedules.filter((s) => s.classId === selectedClass.id) : []),
+    [schedules, selectedClass]
+  );
+
+  const { upcomingSchedules, completedSchedules } = useMemo(() => {
+    const today = startOfToday();
+    const upcoming: ClassSchedule[] = [];
+    const completed: ClassSchedule[] = [];
+    for (const sch of schedulesForSelectedClass) {
+      const end = parseLocalDate(sch.endDate);
+      end.setHours(0, 0, 0, 0);
+      if (end.getTime() >= today.getTime()) upcoming.push(sch);
+      else completed.push(sch);
+    }
+    const byStart = (a: ClassSchedule, b: ClassSchedule) =>
+      parseLocalDate(a.startDate).getTime() - parseLocalDate(b.startDate).getTime();
+    upcoming.sort(byStart);
+    completed.sort((a, b) => parseLocalDate(b.endDate).getTime() - parseLocalDate(a.endDate).getTime());
+    return { upcomingSchedules: upcoming, completedSchedules: completed };
+  }, [schedulesForSelectedClass]);
+
+  const formatDisplayDate = (yyyyMmDd: string) => {
+    const d = parseLocalDate(yyyyMmDd);
+    if (Number.isNaN(d.getTime())) return yyyyMmDd;
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  };
+
+  const formatDaysList = (days: string[]) =>
+    [...days].sort((a, b) => WEEKDAY_ORDER.indexOf(a as (typeof WEEKDAY_ORDER)[number]) - WEEKDAY_ORDER.indexOf(b as (typeof WEEKDAY_ORDER)[number])).join(', ');
 
   // Subscriptions
   useEffect(() => {
@@ -52,6 +132,7 @@ export const ClassManagement: React.FC = () => {
     const unsubSubjects = subjectService.subscribe(setSubjects);
     const unsubSessions = sessionConfigService.subscribe(setSessions);
     const unsubGrades = gradeService.subscribe(setGrades);
+    const unsubSchedules = classScheduleService.subscribe(setSchedules);
     
     return () => {
       unsubClasses();
@@ -60,6 +141,7 @@ export const ClassManagement: React.FC = () => {
       unsubSubjects();
       unsubSessions();
       unsubGrades();
+      unsubSchedules();
     };
   }, []);
 
@@ -149,6 +231,75 @@ useEffect(() => {
   const closeViewModal = () => {
     setViewModalOpen(false);
     setSelectedClass(null);
+    setAddScheduleOpen(false);
+    setScheduleForm({ startDate: '', endDate: '', days: [] });
+    setScheduleFormErrors({});
+  };
+
+  const openAddScheduleModal = () => {
+    setScheduleForm({ startDate: '', endDate: '', days: [] });
+    setScheduleFormErrors({});
+    setAddScheduleOpen(true);
+  };
+
+  const closeAddScheduleModal = () => {
+    setAddScheduleOpen(false);
+    setScheduleForm({ startDate: '', endDate: '', days: [] });
+    setScheduleFormErrors({});
+  };
+
+  const toggleScheduleDay = (key: string) => {
+    setScheduleForm((prev) => ({
+      ...prev,
+      days: prev.days.includes(key) ? prev.days.filter((d) => d !== key) : [...prev.days, key],
+    }));
+    setScheduleFormErrors((prev) => ({ ...prev, days: '' }));
+  };
+
+  const validateScheduleForm = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+    if (!scheduleForm.startDate) errors.startDate = 'Start date is required';
+    if (!scheduleForm.endDate) errors.endDate = 'End date is required';
+    if (scheduleForm.startDate && scheduleForm.endDate) {
+      if (parseLocalDate(scheduleForm.endDate) < parseLocalDate(scheduleForm.startDate)) {
+        errors.endDate = 'End date must be on or after start date';
+      }
+    }
+    if (scheduleForm.days.length === 0) errors.days = 'Select at least one day';
+    if (selectedClass && scheduleForm.startDate && scheduleForm.endDate && !errors.endDate) {
+      const overlap = schedulesForSelectedClass.some((s) =>
+        rangesOverlap(scheduleForm.startDate, scheduleForm.endDate, s.startDate, s.endDate)
+      );
+      if (overlap) errors.range = 'This date range overlaps an existing schedule for this class';
+    }
+    return errors;
+  };
+
+  const handleAddScheduleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClass) return;
+    const errors = validateScheduleForm();
+    if (Object.keys(errors).length > 0) {
+      setScheduleFormErrors(errors);
+      appToasts.fixForm();
+      return;
+    }
+    const orderedDays = [...scheduleForm.days].sort(
+      (a, b) => WEEKDAY_ORDER.indexOf(a as (typeof WEEKDAY_ORDER)[number]) - WEEKDAY_ORDER.indexOf(b as (typeof WEEKDAY_ORDER)[number])
+    );
+    try {
+      await classScheduleService.add({
+        classId: selectedClass.id,
+        startDate: scheduleForm.startDate,
+        endDate: scheduleForm.endDate,
+        daysOfWeek: orderedDays,
+        createdAt: new Date().toISOString(),
+      });
+      appToasts.created('Schedule');
+      closeAddScheduleModal();
+    } catch {
+      appToasts.saveFailed('schedule');
+    }
   };
 
   const openModal = (cls?: Class) => {
@@ -200,6 +351,7 @@ useEffect(() => {
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
+      appToasts.fixForm();
       return;
     }
 
@@ -212,18 +364,35 @@ useEffect(() => {
     try {
       if (editingClass) {
         await classService.update(editingClass.id, classData);
+        appToasts.updated('Class');
       } else {
         await classService.add(classData);
+        appToasts.created('Class');
       }
       closeModal();
     } catch (error) {
       console.error('Submit error:', error);
+      appToasts.saveFailed('class');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this class? This will remove all associations.')) {
-      await classService.delete(id);
+  const openDeleteConfirm = (id: string) => {
+    setClassIdToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteClass = async () => {
+    if (!classIdToDelete) return;
+    try {
+      const allSchedules = await classScheduleService.getAll();
+      await Promise.all(
+        allSchedules.filter((s) => s.classId === classIdToDelete).map((s) => classScheduleService.delete(s.id))
+      );
+      await classService.delete(classIdToDelete);
+      appToasts.deleted('Class');
+    } catch {
+      appToasts.deleteFailed('class');
+      throw new Error('delete failed');
     }
   };
 
@@ -388,7 +557,7 @@ useEffect(() => {
                             <Edit2 size={14} />
                           </button>
                           <button 
-                            onClick={() => handleDelete(cls.id)}
+                            onClick={() => openDeleteConfirm(cls.id)}
                             className="p-1.5 text-[#9ca3af] hover:text-[#ef4444] hover:bg-[#ef4444]/5 rounded-lg transition-colors"
                           >
                             <Trash2 size={14} />
@@ -438,7 +607,7 @@ useEffect(() => {
                           <Edit2 size={14} />
                         </button>
                         <button 
-                          onClick={() => handleDelete(cls.id)}
+                          onClick={() => openDeleteConfirm(cls.id)}
                           className="p-1.5 text-[#9ca3af] hover:text-[#ef4444] hover:bg-[#ef4444]/5 rounded-lg"
                         >
                           <Trash2 size={14} />
@@ -569,7 +738,7 @@ useEffect(() => {
                       >
                         <option value="">{availableTeachers.length ? 'Select Teacher' : 'Select Subject first'}</option>
                         {availableTeachers.map(t => (
-                          <option key={t.id} value={t.id}>{t.name}</option>
+                          <option key={t.id} value={t.id}>{(t.pronoun ?? 'Mr')}. {t.name}</option>
                         ))}
                       </select>
                       {formErrors.teacherId && <p className="text-red-500 text-[11px] mt-1">{formErrors.teacherId}</p>}
@@ -764,6 +933,86 @@ useEffect(() => {
                       </div>
                     )}
                   </div>
+
+                  {/* Class schedules */}
+                  <div className="rounded-xl border border-[#e5e7eb] p-6">
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-lg bg-[#6366f1]/10 p-2">
+                          <Calendar size={20} className="text-[#6366f1]" />
+                        </div>
+                        <div>
+                          <h4 className="text-lg font-bold text-[#1f2937]">Schedules</h4>
+                          <p className="text-sm text-[#6b7280]">Date ranges and days of the week</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={openAddScheduleModal}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#e5e7eb] bg-white px-4 py-2 text-[13px] font-bold text-[#1f2937] shadow-sm transition-colors hover:bg-gray-50"
+                      >
+                        <Plus size={16} />
+                        Add Schedule
+                      </button>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div>
+                        <h5 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#6b7280]">
+                          Upcoming schedules
+                        </h5>
+                        {upcomingSchedules.length === 0 ? (
+                          <p className="rounded-lg border border-dashed border-[#e5e7eb] bg-gray-50 py-6 text-center text-sm text-[#6b7280]">
+                            No upcoming schedules
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {upcomingSchedules.map((sch) => (
+                              <div
+                                key={sch.id}
+                                className="rounded-lg border border-[#e5e7eb] bg-white p-4 text-sm shadow-sm"
+                              >
+                                <div className="font-semibold text-[#1f2937]">
+                                  {formatDisplayDate(sch.startDate)} → {formatDisplayDate(sch.endDate)}
+                                </div>
+                                <div className="mt-2 text-[#6b7280]">
+                                  <span className="font-medium text-[#9ca3af]">Days: </span>
+                                  {formatDaysList(sch.daysOfWeek)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <h5 className="mb-3 text-[11px] font-bold uppercase tracking-wider text-[#6b7280]">
+                          Completed schedules
+                        </h5>
+                        {completedSchedules.length === 0 ? (
+                          <p className="rounded-lg border border-dashed border-[#e5e7eb] bg-gray-50 py-6 text-center text-sm text-[#6b7280]">
+                            No completed schedules
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {completedSchedules.map((sch) => (
+                              <div
+                                key={sch.id}
+                                className="rounded-lg border border-[#f3f4f6] bg-gray-50/80 p-4 text-sm"
+                              >
+                                <div className="font-semibold text-[#374151]">
+                                  {formatDisplayDate(sch.startDate)} → {formatDisplayDate(sch.endDate)}
+                                </div>
+                                <div className="mt-2 text-[#6b7280]">
+                                  <span className="font-medium text-[#9ca3af]">Days: </span>
+                                  {formatDaysList(sch.daysOfWeek)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             </div>
@@ -771,6 +1020,141 @@ useEffect(() => {
         </AnimatePresence>
 
       </AnimatePresence>
+
+      <AnimatePresence>
+        {addScheduleOpen && selectedClass && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeAddScheduleModal}
+              className="absolute inset-0 bg-[#111827]/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              className="relative w-full max-w-md overflow-hidden rounded-xl border border-[#e5e7eb] bg-white shadow-2xl"
+            >
+              <div className="flex items-center justify-between border-b border-[#e5e7eb] bg-[#fafafa] p-6">
+                <h3 className="text-[18px] font-bold text-[#1f2937]">Add schedule</h3>
+                <button
+                  type="button"
+                  onClick={closeAddScheduleModal}
+                  className="rounded-lg p-1.5 text-[#9ca3af] transition-colors hover:bg-gray-200 hover:text-[#1f2937]"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleAddScheduleSubmit} className="space-y-5 p-6">
+                <p className="text-sm text-[#6b7280]">
+                  For <span className="font-semibold text-[#1f2937]">{getClassName(selectedClass)}</span>
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-[12px] font-bold uppercase tracking-tight text-[#6b7280]">
+                      Start date *
+                    </label>
+                    <input
+                      type="date"
+                      className={`w-full rounded-lg border px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 ${
+                        scheduleFormErrors.startDate ? 'border-red-500' : 'border-[#e5e7eb]'
+                      }`}
+                      value={scheduleForm.startDate}
+                      onChange={(e) => {
+                        setScheduleForm((p) => ({ ...p, startDate: e.target.value }));
+                        setScheduleFormErrors((er) => ({ ...er, startDate: '', range: '' }));
+                      }}
+                    />
+                    {scheduleFormErrors.startDate && (
+                      <p className="text-[11px] text-red-500">{scheduleFormErrors.startDate}</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[12px] font-bold uppercase tracking-tight text-[#6b7280]">
+                      End date *
+                    </label>
+                    <input
+                      type="date"
+                      className={`w-full rounded-lg border px-3 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20 ${
+                        scheduleFormErrors.endDate ? 'border-red-500' : 'border-[#e5e7eb]'
+                      }`}
+                      value={scheduleForm.endDate}
+                      onChange={(e) => {
+                        setScheduleForm((p) => ({ ...p, endDate: e.target.value }));
+                        setScheduleFormErrors((er) => ({ ...er, endDate: '', range: '' }));
+                      }}
+                    />
+                    {scheduleFormErrors.endDate && (
+                      <p className="text-[11px] text-red-500">{scheduleFormErrors.endDate}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[#e5e7eb] p-4">
+                  <span className="mb-3 block text-[12px] font-bold uppercase tracking-tight text-[#6b7280]">
+                    Days of week *
+                  </span>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {WEEKDAY_ORDER.map((key) => (
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center gap-2 rounded-lg p-2 hover:bg-gray-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={scheduleForm.days.includes(key)}
+                          onChange={() => toggleScheduleDay(key)}
+                          className="h-4 w-4 rounded border-gray-300 text-[#3b82f6] focus:ring-[#3b82f6]"
+                        />
+                        <span className="text-sm text-[#1f2937]">{WEEKDAY_LABELS[key]}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {scheduleFormErrors.days && (
+                    <p className="mt-2 text-[11px] text-red-500">{scheduleFormErrors.days}</p>
+                  )}
+                </div>
+
+                {scheduleFormErrors.range && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+                    {scheduleFormErrors.range}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeAddScheduleModal}
+                    className="flex-1 rounded-lg border border-[#e5e7eb] px-4 py-2 text-[13px] font-bold text-[#6b7280] transition-colors hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 rounded-lg bg-[#3b82f6] px-4 py-2 text-[13px] font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+                  >
+                    Save schedule
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) setClassIdToDelete(null);
+        }}
+        title="Delete this class?"
+        description="This will remove all associations for this class. This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteClass}
+      />
     </div>
   );
 };

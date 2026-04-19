@@ -4,6 +4,7 @@
  */
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { DashboardLayout } from './layouts/DashboardLayout';
@@ -14,11 +15,13 @@ import { ClassManagement } from './pages/ClassManagement';
 import { AttendancePage } from './pages/AttendancePage';
 import { Teachers } from './pages/Teachers';
 import AcademicConfig from './pages/AcademicConfig';
+import { Schedules } from './pages/Schedules';
 
 export default function App() {
   return (
     <AuthProvider>
       <Router>
+        <Toaster position="top-right" richColors closeButton />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           
@@ -42,6 +45,14 @@ export default function App() {
             <ProtectedRoute allowedRoles={['owner', 'teacher']}>
               <DashboardLayout>
                 <ClassManagement />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/schedules" element={
+            <ProtectedRoute allowedRoles={['owner', 'teacher']}>
+              <DashboardLayout>
+                <Schedules />
               </DashboardLayout>
             </ProtectedRoute>
           } />

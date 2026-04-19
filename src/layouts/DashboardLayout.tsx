@@ -21,6 +21,7 @@ import {
   SignOut
 } from "phosphor-react";
 import { useAuth } from '../context/AuthContext';
+import { appToasts } from '../lib/appToasts';
 import { cn } from '../lib/utils';
 
 interface SidebarItemProps {
@@ -55,6 +56,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
   const handleLogout = async () => {
     await logout();
+    appToasts.signedOut();
     navigate('/login');
   };
 
@@ -76,13 +78,15 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
 
     { to: '/classes', icon: Notebook, label: 'Class Management', roles: ['owner', 'teacher'] },
 
+    { to: '/schedules', icon: Calendar, label: 'Schedules', roles: ['owner', 'teacher'] },
+
     { to: '/attendance', icon: CalendarCheck, label: 'Attendance Management', roles: ['owner', 'teacher'] },
   ].filter(item => profile && item.roles.includes(profile.role));
 
   return (
-    <div className="min-h-screen bg-[#f3f4f6] flex flex-col font-sans">
+    <div className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-[#f3f4f6] font-sans">
       {/* Topbar */}
-      <header className="h-[64px] bg-white border-b border-[#e5e7eb] flex items-center justify-between px-4 sm:px-8 z-50 shadow-sm">
+      <header className="h-16 shrink-0 bg-white border-b border-[#e5e7eb] flex items-center justify-between px-4 sm:px-8 z-50 shadow-sm">
         <div className="flex items-center gap-4 flex-shrink-0">
           <img
             src="../assets/an_t_logo.png"
@@ -108,10 +112,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       </header>
 
       {/* Main Area with Sidebar */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Full-Height Sidebar */}
         <aside className={cn(
-          "bg-[#111827] transition-all duration-300 border-r border-white/10 flex flex-col z-40",
+          "flex shrink-0 flex-col bg-[#111827] transition-all duration-300 border-r border-white/10 z-40",
           sidebarWidth
         )}>
           {/* Nav Content */}
@@ -154,17 +158,16 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
         </aside>
 
         {/* Main Content */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Scrollable Content */}
-          <main className="flex-1 overflow-auto p-6 lg:p-8 bg-[#f3f4f6]">
-            {children}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Primary scroll: long pages scroll here; calendar pages fill height */}
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f3f4f6] p-6 lg:p-8">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden [-webkit-overflow-scrolling:touch]">
+              {children}
+            </div>
           </main>
 
-          {/* Footer (main only, adjusts with sidebar) */}
-          <footer className={cn(
-            "h-12 bg-white border-t border-[#e5e7eb] flex items-center justify-between px-6 text-sm text-[#6b7280] shadow-sm",
-            isSidebarCollapsed ? "pl-20" : "pl-[248px]"
-          )}>
+          {/* Footer: same column as main — no extra pl; sidebar is a sibling */}
+          <footer className="flex h-12 shrink-0 items-center justify-between border-t border-[#e5e7eb] bg-white px-6 text-sm text-[#6b7280] shadow-sm lg:px-8">
             <div>
               Powered by <span className="text-[#6b7280]">AcadGrid</span>
             </div>

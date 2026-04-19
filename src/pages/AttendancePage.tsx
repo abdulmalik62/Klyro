@@ -19,6 +19,7 @@ import { whatsappService } from '../services/whatsapp';
 import { Student, Class, Session, AttendanceRecord } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
+import { appToasts } from '../lib/appToasts';
 
 export const AttendancePage: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -42,8 +43,15 @@ export const AttendancePage: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedClassId || !selectedSubject) return;
-    
+    if (!selectedClassId || !selectedSubject) {
+      appToasts.selectClassAndSubject();
+      return;
+    }
+    if (filteredStudents.length === 0) {
+      appToasts.noStudentsInClass();
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const sessionData: Omit<Session, 'id'> = {
@@ -69,22 +77,42 @@ export const AttendancePage: React.FC = () => {
       });
 
       await Promise.all(promises);
-      alert('Attendance marked successfully!');
-      
+      appToasts.attendanceSaved();
+
       // Reset
       setAttendance({});
       setRemarks({});
     } catch (error) {
       console.error(error);
+      appToasts.attendanceFailed();
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const phoneForPreferred = (s: Student): string | undefined => {
+    switch (s.preferredContact) {
+      case 'father':
+        return s.fatherPhone;
+      case 'mother':
+        return s.motherPhone;
+      case 'guardian':
+        return s.guardianPhone;
+      default:
+        return s.guardianPhone || s.fatherPhone || s.motherPhone;
+    }
+  };
+
   const sendWhatsApp = (student: Student) => {
+    const phone = phoneForPreferred(student);
+    if (!phone?.trim()) {
+      appToasts.whatsappNoPhone();
+      return;
+    }
     const status = attendance[student.id] || 'absent';
     const date = format(new Date(), 'PPP');
-    whatsappService.sendAttendanceNotification(student.name, status, date, student.parentPhone);
+    appToasts.whatsappOpening();
+    whatsappService.sendAttendanceNotification(student.name, status, date, phone);
   };
 
   return (

@@ -1,5 +1,5 @@
 import { mockStorage } from './mockStorage';
-import { Student, Class, AttendanceRecord, Teacher, Subject, Grade } from '../types';
+import { Student, Class, AttendanceRecord, Teacher, Subject, Grade, ClassSchedule } from '../types';
 import type { Session as ConfigSession } from '../types';
 
 // Students
@@ -30,6 +30,23 @@ export const classService = {
     callback(mockStorage.getCollection('classes'));
     return () => clearInterval(interval);
   }
+};
+
+// Class schedules (date ranges + weekdays per class)
+export const classScheduleService = {
+  getAll: async () => mockStorage.getCollection('class_schedules') as ClassSchedule[],
+  add: async (schedule: Omit<ClassSchedule, 'id'>) =>
+    mockStorage.addItem('class_schedules', schedule) as ClassSchedule,
+  update: async (id: string, schedule: Partial<ClassSchedule>) =>
+    mockStorage.updateItem('class_schedules', id, schedule),
+  delete: async (id: string) => mockStorage.deleteItem('class_schedules', id),
+  subscribe: (callback: (schedules: ClassSchedule[]) => void) => {
+    const interval = setInterval(() => {
+      callback(mockStorage.getCollection('class_schedules') as ClassSchedule[]);
+    }, 1000);
+    callback(mockStorage.getCollection('class_schedules') as ClassSchedule[]);
+    return () => clearInterval(interval);
+  },
 };
 
 // Sessions

@@ -7,6 +7,7 @@ export const mockStorage = {
       users: [],
       students: [],
       classes: [],
+      class_schedules: [],
       sessions: [],
       attendance: []
     };

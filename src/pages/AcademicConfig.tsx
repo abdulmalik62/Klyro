@@ -7,6 +7,8 @@ import {
 } from '../services/firestore';
 import type { Subject, Session, Grade } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { appToasts } from '../lib/appToasts';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 
 const AcademicConfig: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'subjects' | 'sessions' | 'grades'>('subjects');
@@ -23,6 +25,8 @@ const AcademicConfig: React.FC = () => {
   const [editingItem, setEditingItem] = useState<(Subject | Session | Grade) | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<any>({});
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemIdToDelete, setItemIdToDelete] = useState<string | null>(null);
 
   // Subscriptions
   useEffect(() => {
@@ -102,46 +106,69 @@ const AcademicConfig: React.FC = () => {
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
+      appToasts.fixForm();
       return;
     }
+
+    const entityLabel =
+      activeTab === 'subjects' ? 'Subject' : activeTab === 'sessions' ? 'Session' : 'Grade';
 
     try {
       switch (activeTab) {
         case 'subjects':
           if (editingItem) {
             await subjectService.update((editingItem as Subject).id, formData);
+            appToasts.updated(entityLabel);
           } else {
             await subjectService.add({ ...formData, createdAt: Date.now() });
+            appToasts.created(entityLabel);
           }
           break;
         case 'sessions':
           if (editingItem) {
             await sessionConfigService.update((editingItem as Session).id, formData);
+            appToasts.updated(entityLabel);
           } else {
             await sessionConfigService.add({ ...formData, createdAt: Date.now() });
+            appToasts.created(entityLabel);
           }
           break;
         case 'grades':
           if (editingItem) {
             await gradeService.update((editingItem as Grade).id, formData);
+            appToasts.updated(entityLabel);
           } else {
             await gradeService.add({ ...formData, createdAt: Date.now() });
+            appToasts.created(entityLabel);
           }
           break;
       }
       closeModal();
     } catch (error) {
       console.error('Submit error:', error);
+      appToasts.saveFailed(entityLabel.toLowerCase());
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this item?')) {
+  const openDeleteConfirm = (id: string) => {
+    setItemIdToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteItem = async () => {
+    if (!itemIdToDelete) return;
+    const entityLabel =
+      activeTab === 'subjects' ? 'Subject' : activeTab === 'sessions' ? 'Session' : 'Grade';
+    try {
       switch (activeTab) {
-        case 'subjects': await subjectService.delete(id); break;
-        case 'sessions': await sessionConfigService.delete(id); break;
-        case 'grades': await gradeService.delete(id); break;
+        case 'subjects': await subjectService.delete(itemIdToDelete); break;
+        case 'sessions': await sessionConfigService.delete(itemIdToDelete); break;
+        case 'grades': await gradeService.delete(itemIdToDelete); break;
       }
+      appToasts.deleted(entityLabel);
+    } catch {
+      appToasts.deleteFailed(entityLabel.toLowerCase());
+      throw new Error('delete failed');
     }
   };
 
@@ -309,7 +336,7 @@ const AcademicConfig: React.FC = () => {
                             <Edit2 size={14} />
                           </button>
                           <button 
-                            onClick={() => handleDelete(item.id)}
+                            onClick={() => openDeleteConfirm(item.id)}
                             className="p-1.5 text-[#9ca3af] hover:text-[#ef4444] hover:bg-[#ef4444]/5 rounded-lg transition-colors"
                           >
                             <Trash2 size={14} />
@@ -362,7 +389,7 @@ const AcademicConfig: React.FC = () => {
                         <Edit2 size={16} />
                       </button>
                       <button 
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => openDeleteConfirm(item.id)}
                         className="p-2 text-[#9ca3af] hover:text-[#ef4444] hover:bg-[#ef4444]/5 rounded-lg transition-colors flex-1 text-center"
                       >
                         <Trash2 size={16} />
@@ -504,6 +531,18 @@ const AcademicConfig: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) setItemIdToDelete(null);
+        }}
+        title="Delete this item?"
+        description="This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteItem}
+      />
     </div>
   );
 };

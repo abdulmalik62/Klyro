@@ -54,6 +54,15 @@ export interface Class {
   createdAt: string;
 }
 
+export interface ClassSchedule {
+  id: string;
+  classId: string;
+  startDate: string;
+  endDate: string;
+  daysOfWeek: string[]; // e.g. ["Mon", "Wed", "Fri"]
+  createdAt: string;
+}
+
 export interface Session {
   id: string;
   classId: string;
@@ -73,8 +82,12 @@ export interface AttendanceRecord {
   timestamp: number;
 }
 
+export type TeacherPronoun = 'Mr' | 'Mrs' | 'Dr';
+
 export interface Teacher {
   id: string;
+  /** Honorific / title shown before the name (e.g. Mr, Mrs, Dr). */
+  pronoun?: TeacherPronoun;
   name: string;
   phone: string;
   qualification: string;

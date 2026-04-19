@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { appToasts } from '../lib/appToasts';
 import { LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -14,9 +15,11 @@ export const LoginPage: React.FC = () => {
   const handleSignIn = async () => {
     try {
       await signIn();
+      appToasts.signedIn();
       navigate('/');
     } catch (error) {
       console.error('Sign in failed', error);
+      appToasts.signInFailed();
     }
   };
 

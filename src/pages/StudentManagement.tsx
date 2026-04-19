@@ -1,11 +1,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { Plus, Search, Edit2, Trash2, X, Table2, Grid, Users, Phone, BadgeCheck, Mail, Home, School, BookOpen, Calendar, Users2, ChevronRight } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, Table2, Grid, Users, Phone, BadgeCheck, Mail, Home, School, BookOpen, Calendar, Users2, ChevronRight, Eye, Clock, User } from 'lucide-react';
 import { 
   studentService, gradeService, subjectService, sessionConfigService, classService, teacherService
 
 } from '../services/firestore';
 import type { Student, Grade, Subject, Session as ConfigSession, Class, Teacher } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { appToasts } from '../lib/appToasts';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { Avatar } from '../components/ui/Avatar';
 
 export const StudentManagement: React.FC = () => {
   const [students, setStudents] = useState<Student[]>([]);
@@ -16,6 +19,8 @@ export const StudentManagement: React.FC = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [availableClasses, setAvailableClasses] = useState<Class[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [studentIdToDelete, setStudentIdToDelete] = useState<string | null>(null);
   
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,6 +28,7 @@ export const StudentManagement: React.FC = () => {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [declarationChecked, setDeclarationChecked] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -50,7 +56,10 @@ export const StudentManagement: React.FC = () => {
   const gradeMap = useMemo(() => new Map(grades.map(g => [g.id, g.name])), [grades]);
   const subjectMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
   const sessionMap = useMemo(() => new Map(sessions.map(s => [s.id, s.name])), [sessions]);
-  const teacherMap = useMemo(() => new Map(teachers.map(t => [t.id, t.name])), [teachers]);
+  const teacherMap = useMemo(
+    () => new Map(teachers.map((t) => [t.id, `${t.pronoun ?? 'Mr'}. ${t.name}`])),
+    [teachers]
+  );
 
   // Enrollment options scoped to grade (matches Class.gradeId — use ourGradeId)
   const filteredSubjects = useMemo(() => {
@@ -138,6 +147,26 @@ export const StudentManagement: React.FC = () => {
     const studentCount = cls.studentIds.length;
     return { subjectName, sessionName, teacherName, time, studentCount };
   };
+
+  const selectedStudentClass = useMemo(
+    () => (selectedStudent?.classId ? classes.find((c) => c.id === selectedStudent.classId) ?? null : null),
+    [classes, selectedStudent]
+  );
+
+  const profileClassDetails = useMemo(
+    () => (selectedStudentClass ? getClassDisplay(selectedStudentClass) : null),
+    [selectedStudentClass]
+  );
+
+  const formatSessionLine = (sessionId: string) => {
+    const sess = sessions.find((s) => s.id === sessionId);
+    const label = sessionMap.get(sessionId) || 'Session';
+    if (!sess) return label;
+    return `${label} · ${sess.startTime} – ${sess.endTime}`;
+  };
+
+  const openViewModal = (student: Student) => setSelectedStudent(student);
+  const closeViewModal = () => setSelectedStudent(null);
 
   const openModal = (student?: Student) => {
     if (student) {
@@ -239,8 +268,13 @@ export const StudentManagement: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors = validateForm();
-    if (Object.keys(errors).length > 0 || !declarationChecked) {
+    if (Object.keys(errors).length > 0 || (!editingStudent && !declarationChecked)) {
       setFormErrors(errors);
+      if (Object.keys(errors).length > 0) {
+        appToasts.fixForm();
+      } else {
+        appToasts.confirmRequired('enrollment');
+      }
       return;
     }
 
@@ -256,29 +290,46 @@ export const StudentManagement: React.FC = () => {
     try {
       if (editingStudent) {
         await studentService.update(editingStudent.id, studentData);
+        appToasts.updated('Student');
       } else {
-        await studentService.add(studentData);
-      }
+        const created = await studentService.add(studentData);
+        appToasts.created('Student');
 
-      // Advanced: Auto-update class.studentIds if class assigned (for new students only, avoid duplicates for edits)
-      if (selectedClassId && !editingStudent) {
-        const targetClass = classes.find(c => c.id === selectedClassId);
-        if (targetClass && !targetClass.studentIds.includes(studentId)) {
-          await classService.update(selectedClassId, {
-            studentIds: [...targetClass.studentIds, studentId]
-          });
+        // Advanced: Auto-update class.studentIds if class assigned (for new students only)
+        if (selectedClassId && created?.id) {
+          const targetClass = classes.find(c => c.id === selectedClassId);
+          if (targetClass && !targetClass.studentIds.includes(created.id)) {
+            try {
+              await classService.update(selectedClassId, {
+                studentIds: [...targetClass.studentIds, created.id],
+              });
+            } catch {
+              appToasts.genericError();
+            }
+          }
         }
       }
 
       closeModal();
     } catch (error) {
       console.error('Submit error:', error);
+      appToasts.saveFailed('student');
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this student?')) {
-      await studentService.delete(id);
+  const openDeleteConfirm = (id: string) => {
+    setStudentIdToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteStudent = async () => {
+    if (!studentIdToDelete) return;
+    try {
+      await studentService.delete(studentIdToDelete);
+      appToasts.deleted('Student');
+    } catch {
+      appToasts.deleteFailed('student');
+      throw new Error('delete failed');
     }
   };
 
@@ -400,7 +451,7 @@ export const StudentManagement: React.FC = () => {
                     <th className="px-6 py-3 w-[160px]">Subjects</th>
                     <th className="px-6 py-3 w-[140px]">Sessions</th>
                     <th className="px-6 py-3 w-[140px]">Contact</th>
-                    <th className="px-6 py-3 w-[100px] text-right">Actions</th>
+                    <th className="px-6 py-3 w-[130px] text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#e5e7eb]">
@@ -429,6 +480,14 @@ export const StudentManagement: React.FC = () => {
                       </td>
                       <td className="px-6 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => openViewModal(student)}
+                            className="p-1.5 text-[#9ca3af] hover:text-[#6366f1] hover:bg-[#6366f1]/5 rounded-lg transition-colors"
+                            title="View profile"
+                          >
+                            <Eye size={14} />
+                          </button>
                           <button 
                             onClick={() => openModal(student)}
                             className="p-1.5 text-[#9ca3af] hover:text-[#3b82f6] hover:bg-[#3b82f6]/5 rounded-lg transition-colors"
@@ -436,7 +495,7 @@ export const StudentManagement: React.FC = () => {
                             <Edit2 size={14} />
                           </button>
                           <button 
-                            onClick={() => handleDelete(student.id)}
+                            onClick={() => openDeleteConfirm(student.id)}
                             className="p-1.5 text-[#9ca3af] hover:text-[#ef4444] hover:bg-[#ef4444]/5 rounded-lg transition-colors"
                           >
                             <Trash2 size={14} />
@@ -467,6 +526,14 @@ export const StudentManagement: React.FC = () => {
                     <div className="flex items-start justify-between">
                       <h3 className="font-bold text-lg text-[#1f2937] truncate flex-1">{student.name}</h3>
                       <div className="flex gap-1 ml-2">
+                        <button
+                          type="button"
+                          onClick={() => openViewModal(student)}
+                          className="p-1.5 text-[#9ca3af] hover:text-[#6366f1] hover:bg-[#6366f1]/5 rounded-lg"
+                          title="View profile"
+                        >
+                          <Eye size={14} />
+                        </button>
                         <button 
                           onClick={() => openModal(student)}
                           className="p-1.5 text-[#9ca3af] hover:text-[#3b82f6] hover:bg-[#3b82f6]/5 rounded-lg"
@@ -474,7 +541,7 @@ export const StudentManagement: React.FC = () => {
                           <Edit2 size={14} />
                         </button>
                         <button 
-                          onClick={() => handleDelete(student.id)}
+                          onClick={() => openDeleteConfirm(student.id)}
                           className="p-1.5 text-[#9ca3af] hover:text-[#ef4444] hover:bg-[#ef4444]/5 rounded-lg"
                         >
                           <Trash2 size={14} />
@@ -809,21 +876,22 @@ export const StudentManagement: React.FC = () => {
                   )}
                 </div>
 
-                {/* Section 4: Declaration */}
-                <div className="border border-[#e5e7eb] rounded-xl p-6 bg-gray-50"> 
-                  <div className="flex items-start gap-3">
-                    <input
-                      id="declaration"
-                      type="checkbox"
-                      checked={declarationChecked}
-                      onChange={(e) => setDeclarationChecked(e.target.checked)}
-                      className="mt-1 h-4 w-4 text-[#3b82f6] border-gray-300 rounded focus:ring-[#3b82f6] mt-0.5"
-                    />
-                    <label htmlFor="declaration" className="text-[14px] text-[#1f2937] cursor-pointer flex-1">
-                      <strong>I confirm the above details are correct</strong> and agree to the terms of enrollment.
-                    </label>
+                {!editingStudent && (
+                  <div className="border border-[#e5e7eb] rounded-xl p-6 bg-gray-50"> 
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="declaration"
+                        type="checkbox"
+                        checked={declarationChecked}
+                        onChange={(e) => setDeclarationChecked(e.target.checked)}
+                        className="mt-1 h-4 w-4 text-[#3b82f6] border-gray-300 rounded focus:ring-[#3b82f6] mt-0.5"
+                      />
+                      <label htmlFor="declaration" className="text-[14px] text-[#1f2937] cursor-pointer flex-1">
+                        <strong>I confirm the above details are correct</strong> and agree to the terms of enrollment.
+                      </label>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="pt-4 flex gap-3">
                   <button 
@@ -835,7 +903,7 @@ export const StudentManagement: React.FC = () => {
                   </button>
                   <button 
                     type="submit"
-                    disabled={!declarationChecked || Object.keys(formErrors).length > 0}
+                    disabled={(!editingStudent && !declarationChecked) || Object.keys(formErrors).length > 0}
                     className="flex-1 px-4 py-2 bg-[#3b82f6] text-white rounded-lg text-[13px] font-bold hover:opacity-90 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {editingStudent ? 'Update Student' : 'Register Student'}
@@ -847,6 +915,215 @@ export const StudentManagement: React.FC = () => {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {selectedStudent && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeViewModal}
+              className="absolute inset-0 bg-[#111827]/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: 10 }}
+              className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[#e5e7eb] bg-white shadow-2xl"
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#e5e7eb] bg-[#fafafa] p-6">
+                <h3 className="text-[18px] font-bold text-[#1f2937]">Student profile</h3>
+                <button
+                  type="button"
+                  onClick={closeViewModal}
+                  className="rounded-lg p-1.5 text-[#9ca3af] transition-colors hover:bg-gray-200 hover:text-[#1f2937]"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-6 p-6">
+                <div className="rounded-xl border border-[#e5e7eb] p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <Avatar name={selectedStudent.name} size="lg" />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="truncate text-xl font-bold text-[#1f2937]">{selectedStudent.name}</h4>
+                      {selectedStudent.rollNumber ? (
+                        <p className="mt-1 font-mono text-sm text-[#6b7280]">Roll: {selectedStudent.rollNumber}</p>
+                      ) : null}
+                      <div className="mt-3">
+                        <span className="status-pill inline-block rounded-full bg-[#f3f4f6] px-3 py-1 text-xs font-semibold text-[#1f2937]">
+                          {gradeMap.get(selectedStudent.ourGradeId) || 'Grade —'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[#e5e7eb] p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="rounded-lg bg-[#3b82f6]/10 p-2">
+                      <User size={20} className="text-[#3b82f6]" />
+                    </div>
+                    <h4 className="text-lg font-bold text-[#1f2937]">Personal details</h4>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+                    <div>
+                      <span className="mb-1 block font-medium text-[#6b7280]">Father</span>
+                      <span className="font-semibold text-[#1f2937]">{selectedStudent.fatherName || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="mb-1 block font-medium text-[#6b7280]">Mother</span>
+                      <span className="font-semibold text-[#1f2937]">{selectedStudent.motherName || '—'}</span>
+                    </div>
+                    {selectedStudent.guardianName ? (
+                      <div className="md:col-span-2">
+                        <span className="mb-1 block font-medium text-[#6b7280]">Guardian</span>
+                        <span className="font-semibold text-[#1f2937]">{selectedStudent.guardianName}</span>
+                      </div>
+                    ) : null}
+                    <div>
+                      <span className="mb-1 block font-medium text-[#6b7280]">Father phone</span>
+                      <span className="text-[#1f2937]">{selectedStudent.fatherPhone || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="mb-1 block font-medium text-[#6b7280]">Mother phone</span>
+                      <span className="text-[#1f2937]">{selectedStudent.motherPhone || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="mb-1 block font-medium text-[#6b7280]">Guardian phone</span>
+                      <span className="text-[#1f2937]">{selectedStudent.guardianPhone || '—'}</span>
+                    </div>
+                    <div>
+                      <span className="mb-1 block font-medium text-[#6b7280]">Preferred contact</span>
+                      <span className="capitalize text-[#1f2937]">{selectedStudent.preferredContact}</span>
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className="mb-1 flex items-center gap-1 font-medium text-[#6b7280]">
+                        <Mail size={14} /> Parent email
+                      </span>
+                      <span className="text-[#1f2937]">{selectedStudent.parentEmail || '—'}</span>
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className="mb-1 flex items-center gap-1 font-medium text-[#6b7280]">
+                        <Home size={14} /> Address
+                      </span>
+                      <span className="text-[#1f2937]">{selectedStudent.address || '—'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[#e5e7eb] p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="rounded-lg bg-[#8b5cf6]/10 p-2">
+                      <School size={20} className="text-[#8b5cf6]" />
+                    </div>
+                    <h4 className="text-lg font-bold text-[#1f2937]">Academic</h4>
+                  </div>
+                  <div className="space-y-4 text-sm">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div>
+                        <span className="mb-1 block font-medium text-[#6b7280]">Grade</span>
+                        <span className="font-semibold text-[#1f2937]">
+                          {gradeMap.get(selectedStudent.ourGradeId) || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="mb-1 block font-medium text-[#6b7280]">School</span>
+                        <span className="text-[#1f2937]">{selectedStudent.school || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="mb-1 block font-medium text-[#6b7280]">HSC group</span>
+                        <span className="text-[#1f2937]">{selectedStudent.hscGroup || '—'}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="mb-2 block font-medium text-[#6b7280]">Subjects</span>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedStudent.subjectIds?.length ? (
+                          selectedStudent.subjectIds.map((id) => (
+                            <span
+                              key={id}
+                              className="rounded-full bg-[#f3f4f6] px-3 py-1 text-xs font-semibold text-[#1f2937]"
+                            >
+                              {subjectMap.get(id) || id}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[#9ca3af]">—</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="mb-2 block font-medium text-[#6b7280]">Sessions</span>
+                      <ul className="space-y-2">
+                        {(selectedStudent.sessionIds || []).length ? (
+                          selectedStudent.sessionIds.map((id) => (
+                            <li key={id} className="flex items-start gap-2 text-[#374151]">
+                              <Clock size={16} className="mt-0.5 shrink-0 text-[#9ca3af]" />
+                              <span>{formatSessionLine(id)}</span>
+                            </li>
+                          ))
+                        ) : (
+                          <span className="text-[#9ca3af]">—</span>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[#e5e7eb] p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="rounded-lg bg-[#10b981]/10 p-2">
+                      <BookOpen size={20} className="text-[#10b981]" />
+                    </div>
+                    <h4 className="text-lg font-bold text-[#1f2937]">Class assignment</h4>
+                  </div>
+                  {profileClassDetails && selectedStudentClass ? (
+                    <div className="rounded-lg border border-[#f3f4f6] bg-gray-50/50 p-4 text-sm">
+                      <div className="font-bold text-[#1f2937]">
+                        {profileClassDetails.subjectName} · {profileClassDetails.sessionName}
+                      </div>
+                      <div className="mt-2 text-[#6b7280]">
+                        <span className="font-medium text-[#9ca3af]">Teacher: </span>
+                        {profileClassDetails.teacherName}
+                      </div>
+                      <div className="mt-1 text-[#6b7280]">
+                        <span className="font-medium text-[#9ca3af]">Session time: </span>
+                        {profileClassDetails.time}
+                      </div>
+                      <div className="mt-1 text-xs text-[#9ca3af]">
+                        Grade: {gradeMap.get(selectedStudentClass.gradeId) ?? '—'}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="rounded-xl border-2 border-dashed border-[#e5e7eb] bg-gray-50 py-8 text-center text-sm text-[#6b7280]">
+                      No class assigned yet.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-[#e5e7eb] bg-gray-50 p-4 text-center">
+                  <h4 className="mb-2 font-bold text-[#1f2937]">Attendance</h4>
+                  <p className="text-sm text-gray-500">Attendance data will be available soon</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open);
+          if (!open) setStudentIdToDelete(null);
+        }}
+        title="Delete this student?"
+        description="This will permanently remove the student record. This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteStudent}
+      />
     </div>
   );
 };
