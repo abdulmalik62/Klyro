@@ -1,4 +1,17 @@
-import { mockStorage } from './mockStorage';
+import {
+  collection,
+  doc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  query,
+  where,
+  getDoc
+} from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { generateCustomId } from '../lib/idGenerator';
 import {
   Student,
   Class,
@@ -10,154 +23,89 @@ import {
 } from '../types';
 import type { Session as ConfigSession } from '../types';
 
-// Students
-export const studentService = {
-  getAll: async () => mockStorage.getCollection('students'),
-  add: async (student: Omit<Student, 'id'>) => mockStorage.addItem('students', student),
-  update: async (id: string, student: Partial<Student>) => mockStorage.updateItem('students', id, student),
-  delete: async (id: string) => mockStorage.deleteItem('students', id),
-  subscribe: (callback: (students: Student[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('students'));
-    }, 1000);
-    callback(mockStorage.getCollection('students'));
-    return () => clearInterval(interval);
-  }
-};
+// Generic create service generator
+function createService<T extends { id: string }>(collectionName: string, prefix: string) {
+  const colRef = collection(db, collectionName);
 
-// Classes
-export const classService = {
-  getAll: async () => mockStorage.getCollection('classes'),
-  add: async (cls: Omit<Class, 'id'>) => mockStorage.addItem('classes', cls),
-  update: async (id: string, cls: Partial<Class>) => mockStorage.updateItem('classes', id, cls),
-  delete: async (id: string) => mockStorage.deleteItem('classes', id),
-  subscribe: (callback: (classes: Class[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('classes'));
-    }, 1000);
-    callback(mockStorage.getCollection('classes'));
-    return () => clearInterval(interval);
-  }
-};
+  return {
+    getAll: async (): Promise<T[]> => {
+      const snap = await getDocs(colRef);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
+    },
+    add: async (data: Omit<T, 'id'>): Promise<string> => {
+      const id = await generateCustomId(prefix);
+      const docRef = doc(db, collectionName, id);
+      await setDoc(docRef as any, { ...data, id });
+      return id;
+    },
+    update: async (id: string, data: Partial<T>): Promise<void> => {
+      const docRef = doc(db, collectionName, id);
+      await updateDoc(docRef as any, data as any);
+    },
+    delete: async (id: string): Promise<void> => {
+      const docRef = doc(db, collectionName, id);
+      await deleteDoc(docRef);
+    },
+    subscribe: (callback: (data: T[]) => void) => {
+      return onSnapshot(colRef, (snap) => {
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
+        callback(items);
+      });
+    }
+  };
+}
 
-// Class schedules (date ranges + weekdays per class)
-export const classScheduleService = {
-  getAll: async () => mockStorage.getCollection('class_schedules') as ClassSchedule[],
-  add: async (schedule: Omit<ClassSchedule, 'id'>) =>
-    mockStorage.addItem('class_schedules', schedule) as ClassSchedule,
-  update: async (id: string, schedule: Partial<ClassSchedule>) =>
-    mockStorage.updateItem('class_schedules', id, schedule),
-  delete: async (id: string) => mockStorage.deleteItem('class_schedules', id),
-  subscribe: (callback: (schedules: ClassSchedule[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('class_schedules') as ClassSchedule[]);
-    }, 1000);
-    callback(mockStorage.getCollection('class_schedules') as ClassSchedule[]);
-    return () => clearInterval(interval);
-  },
-};
+export const studentService = createService<Student>('students', 'ANST');
+export const classService = createService<Class>('classes', 'ANCL');
+export const classScheduleService = createService<ClassSchedule>('class_schedules', 'ANCS');
+export const sessionConfigService = createService<ConfigSession>('config_sessions', 'ANSE');
+export const teacherService = createService<Teacher>('teachers', 'ANTE');
+export const subjectService = createService<Subject>('subjects', 'ANSU');
+export const gradeService = createService<Grade>('grades', 'ANGR');
 
-// Sessions
-export const sessionService = {
-  add: async (session: Omit<ConfigSession, 'id'>) => mockStorage.addItem('sessions', session),
-  subscribe: (callback: (sessions: ConfigSession[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('sessions'));
-    }, 1000);
-    callback(mockStorage.getCollection('sessions'));
-    return () => clearInterval(interval);
-  }
-};
+// SessionService alias to sessionConfigService for compatibility if needed
+export const sessionService = sessionConfigService;
 
-
-// Attendance (per student + class + local date)
+// Attendance Service (Custom implementation since it has upsert and composite keys)
 export const attendanceService = {
   subscribe: (callback: (records: AttendanceRecord[]) => void) => {
-    const tick = () => callback(mockStorage.getCollection('attendance') as AttendanceRecord[]);
-    const interval = setInterval(tick, 1000);
-    tick();
-    return () => clearInterval(interval);
+    const colRef = collection(db, 'attendance');
+    return onSnapshot(colRef, (snap) => {
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+      callback(items);
+    });
   },
   upsert: async (record: Omit<AttendanceRecord, 'id' | 'timestamp'> & { timestamp?: number }) => {
-    const attendance = mockStorage.getCollection('attendance') as AttendanceRecord[];
-    const existing = attendance.find(
-      (a) => a.studentId === record.studentId && a.classId === record.classId && a.date === record.date
+    const colRef = collection(db, 'attendance');
+    const q = query(
+      colRef,
+      where('studentId', '==', record.studentId),
+      where('classId', '==', record.classId),
+      where('date', '==', record.date)
     );
-    const payload: Omit<AttendanceRecord, 'id'> = {
+    const snap = await getDocs(q);
+    
+    const payload = {
       ...record,
       timestamp: record.timestamp ?? Date.now(),
     };
-    if (existing) {
-      mockStorage.updateItem('attendance', existing.id, payload);
+
+    if (!snap.empty) {
+      // Update existing
+      const existingDoc = snap.docs[0];
+      await updateDoc(existingDoc.ref, payload);
     } else {
-      mockStorage.addItem('attendance', payload);
+      // Create new
+      const newRef = doc(colRef); // Auto-generate ID for attendance
+      await setDoc(newRef, { ...payload, id: newRef.id });
     }
   },
   getSessionAttendance: (sessionId: string, callback: (records: AttendanceRecord[]) => void) => {
-    const interval = setInterval(() => {
-      const all = mockStorage.getCollection('attendance') as AttendanceRecord[];
-      callback(all.filter((a) => a.sessionId === sessionId));
-    }, 1000);
-    return () => clearInterval(interval);
+    const colRef = collection(db, 'attendance');
+    const q = query(colRef, where('sessionId', '==', sessionId));
+    return onSnapshot(q, (snap) => {
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+      callback(items);
+    });
   },
 };
-
-export const teacherService = {
-  getAll: async () => mockStorage.getCollection('teachers'),
-  add: async (teacher: Omit<Teacher, 'id'>) => mockStorage.addItem('teachers', teacher),
-  update: async (id: string, teacher: Partial<Teacher>) => mockStorage.updateItem('teachers', id, teacher),
-  delete: async (id: string) => mockStorage.deleteItem('teachers', id),
-  subscribe: (callback: (teachers: Teacher[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('teachers'));
-    }, 1000);
-    callback(mockStorage.getCollection('teachers'));
-    return () => clearInterval(interval);
-  }
-};
-
-export const subjectService = {
-  getAll: async () => mockStorage.getCollection('subjects'),
-  add: async (subject: Omit<Subject, 'id'>) => mockStorage.addItem('subjects', subject),
-  update: async (id: string, subject: Partial<Subject>) => mockStorage.updateItem('subjects', id, subject),
-  delete: async (id: string) => mockStorage.deleteItem('subjects', id),
-  subscribe: (callback: (subjects: Subject[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('subjects'));
-    }, 1000);
-    callback(mockStorage.getCollection('subjects'));
-    return () => clearInterval(interval);
-  }
-};
-
-export const sessionConfigService = {
-  getAll: async () => mockStorage.getCollection('config_sessions'),
-  add: async (session: Omit<ConfigSession, 'id'>) => mockStorage.addItem('config_sessions', session),
-  update: async (id: string, session: Partial<ConfigSession>) =>
-    mockStorage.updateItem('config_sessions', id, session),
-  delete: async (id: string) => mockStorage.deleteItem('config_sessions', id),
-  subscribe: (callback: (sessions: ConfigSession[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('config_sessions'));
-    }, 1000);
-    callback(mockStorage.getCollection('config_sessions'));
-    return () => clearInterval(interval);
-  }
-};
-
-export const gradeService = {
-  getAll: async () => mockStorage.getCollection('grades'),
-  add: async (grade: Omit<Grade, 'id'>) => mockStorage.addItem('grades', grade),
-  update: async (id: string, grade: Partial<Grade>) => mockStorage.updateItem('grades', id, grade),
-  delete: async (id: string) => mockStorage.deleteItem('grades', id),
-  subscribe: (callback: (grades: Grade[]) => void) => {
-    const interval = setInterval(() => {
-      callback(mockStorage.getCollection('grades'));
-    }, 1000);
-    callback(mockStorage.getCollection('grades'));
-    return () => clearInterval(interval);
-  }
-};
-
-
-

@@ -30,15 +30,15 @@ export interface Student {
   address?: string;
 
   // Academic Details
-  gradeId?: string;
+  externalGradeId?: string;
   school?: string;
   hscGroup?: string;
 
   // Enrollment
-  ourGradeId: string;
-  classId?: string | null;
+  gradeId: string;
   subjectIds: string[];
   sessionIds: string[];
+  enrolledClassIds: string[];
 
   // Metadata
   createdAt: string;

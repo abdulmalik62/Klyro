@@ -45,9 +45,8 @@ export const StudentManagement: React.FC = () => {
     sex: 'male' as 'male' | 'female' | 'other',
     address: '',
     gradeId: '',
-    school: '',
-    hscGroup: '',
-    ourGradeId: '',
+      school: '',
+      hscGroup: '',
     subjectIds: [] as string[],
     sessionIds: [] as string[]
   });
@@ -61,22 +60,22 @@ export const StudentManagement: React.FC = () => {
     [teachers]
   );
 
-  // Enrollment options scoped to grade (matches Class.gradeId — use ourGradeId)
+  // Enrollment options scoped to grade (matches Class.gradeId — use gradeId)
   const filteredSubjects = useMemo(() => {
-    if (!formData.ourGradeId) return [];
+    if (!formData.gradeId) return [];
     const subjectIds = classes
-      .filter(c => c.gradeId === formData.ourGradeId)
+      .filter(c => c.gradeId === formData.gradeId)
       .map(c => c.subjectId);
     return subjects.filter(s => subjectIds.includes(s.id));
-  }, [classes, subjects, formData.ourGradeId]);
+  }, [classes, subjects, formData.gradeId]);
 
   const filteredSessions = useMemo(() => {
-    if (!formData.ourGradeId) return [];
+    if (!formData.gradeId) return [];
     const sessionIds = classes
-      .filter(c => c.gradeId === formData.ourGradeId)
+      .filter(c => c.gradeId === formData.gradeId)
       .map(c => c.sessionId);
     return sessions.filter(s => sessionIds.includes(s.id));
-  }, [classes, sessions, formData.ourGradeId]);
+  }, [classes, sessions, formData.gradeId]);
 
   // Subscriptions
   useEffect(() => {
@@ -135,8 +134,8 @@ export const StudentManagement: React.FC = () => {
   }, [classes]);
 
   useEffect(() => {
-    setAvailableClasses(getAvailableClasses(formData.subjectIds, formData.sessionIds, formData.ourGradeId));
-  }, [formData.subjectIds, formData.sessionIds, formData.ourGradeId, getAvailableClasses]);
+    setAvailableClasses(getAvailableClasses(formData.subjectIds, formData.sessionIds, formData.gradeId));
+  }, [formData.subjectIds, formData.sessionIds, formData.gradeId, getAvailableClasses]);
 
   const getClassDisplay = (cls: Class) => {
     const subjectName = subjectMap.get(cls.subjectId) || 'Unknown';
@@ -148,15 +147,9 @@ export const StudentManagement: React.FC = () => {
     return { subjectName, sessionName, teacherName, time, studentCount };
   };
 
-  const selectedStudentClass = useMemo(
-    () => (selectedStudent?.classId ? classes.find((c) => c.id === selectedStudent.classId) ?? null : null),
-    [classes, selectedStudent]
-  );
+  const selectedStudentClass = null;
 
-  const profileClassDetails = useMemo(
-    () => (selectedStudentClass ? getClassDisplay(selectedStudentClass) : null),
-    [selectedStudentClass]
-  );
+  const profileClassDetails = null;
 
   const formatSessionLine = (sessionId: string) => {
     const sess = sessions.find((s) => s.id === sessionId);
@@ -188,11 +181,10 @@ export const StudentManagement: React.FC = () => {
         gradeId: student.gradeId || '',
         school: student.school || '',
         hscGroup: student.hscGroup || '',
-        ourGradeId: student.ourGradeId,
         subjectIds: student.subjectIds || [],
         sessionIds: student.sessionIds || [],
       });
-      setSelectedClassId(student.classId || null);
+      setSelectedClassId(null);
     } else {
       setEditingStudent(null);
       setFormData({
@@ -210,9 +202,8 @@ export const StudentManagement: React.FC = () => {
         sex: 'male',
         address: '',
         gradeId: '',
-        school: '',
-        hscGroup: '',
-        ourGradeId: '',
+      school: '',
+      hscGroup: '',
         subjectIds: [],
         sessionIds: []
       });
@@ -244,7 +235,6 @@ export const StudentManagement: React.FC = () => {
       gradeId: '',
       school: '',
       hscGroup: '',
-      ourGradeId: '',
       subjectIds: [],
       sessionIds: []
     });
@@ -281,7 +271,7 @@ export const StudentManagement: React.FC = () => {
     const studentId = editingStudent?.id || 'temp'; // temp for new
     const studentData: Omit<Student, 'id'> = {
       ...formData,
-      classId: selectedClassId || null,
+      enrolledClassIds: [],
       createdAt: editingStudent?.createdAt || new Date().toISOString(),
       subjectIds: formData.subjectIds,
       sessionIds: formData.sessionIds
@@ -292,22 +282,8 @@ export const StudentManagement: React.FC = () => {
         await studentService.update(editingStudent.id, studentData);
         appToasts.updated('Student');
       } else {
-        const created = await studentService.add(studentData);
+        await studentService.add(studentData);
         appToasts.created('Student');
-
-        // Advanced: Auto-update class.studentIds if class assigned (for new students only)
-        if (selectedClassId && created?.id) {
-          const targetClass = classes.find(c => c.id === selectedClassId);
-          if (targetClass && !targetClass.studentIds.includes(created.id)) {
-            try {
-              await classService.update(selectedClassId, {
-                studentIds: [...targetClass.studentIds, created.id],
-              });
-            } catch {
-              appToasts.genericError();
-            }
-          }
-        }
       }
 
       closeModal();
@@ -362,7 +338,7 @@ export const StudentManagement: React.FC = () => {
   const handleOurGradeChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
-      ourGradeId: value,
+      gradeId: value,
       subjectIds: [],
       sessionIds: [],
     }));
@@ -463,7 +439,7 @@ export const StudentManagement: React.FC = () => {
                       </td>
                       <td className="px-6 py-3">
                         <span className="status-pill bg-[#f3f4f6] text-[#1f2937]">
-                          {gradeMap.get(student.ourGradeId) || 'N/A'}
+                          {gradeMap.get(student.gradeId) || 'N/A'}
                         </span>
                       </td>
                       <td className="px-6 py-3 text-[12px] text-[#6b7280]">
@@ -549,7 +525,7 @@ export const StudentManagement: React.FC = () => {
                       </div>
                     </div>
                     <div className="status-pill bg-[#f3f4f6] text-[#1f2937] inline-block px-3 py-1 rounded-full">
-                      {gradeMap.get(student.ourGradeId)}
+                      {gradeMap.get(student.gradeId)}
                     </div>
                     <div className="text-[13px] text-[#6b7280] space-y-1">
                       <div>Subjects: {getSubjectNames(student.subjectIds)}</div>
@@ -758,7 +734,7 @@ export const StudentManagement: React.FC = () => {
                       <select 
                         required
                         className="w-full px-3 py-2 border border-[#e5e7eb] rounded-lg text-[14px] focus:outline-none focus:ring-2 focus:ring-[#3b82f6]/20"
-                        value={formData.ourGradeId}
+                        value={formData.gradeId}
                         onChange={e => handleOurGradeChange(e.target.value)}
                       >
                         <option value="">Select Our Grade</option>
@@ -770,7 +746,7 @@ export const StudentManagement: React.FC = () => {
                     <div>
                       <label className="text-[12px] font-bold text-[#6b7280] uppercase tracking-tight mb-2 block">Subjects * (At least 1)</label>
                       <div className="space-y-2 max-h-32 overflow-y-auto border border-[#e5e7eb] rounded-lg p-3 bg-white">
-                        {!formData.ourGradeId ? (
+                        {!formData.gradeId ? (
                           <p className="text-sm text-[#6b7280] py-2 text-center">Select grade to see subjects and sessions</p>
                         ) : filteredSubjects.length === 0 ? (
                           <p className="text-sm text-[#6b7280] py-2 text-center">No subjects available for this grade</p>
@@ -795,7 +771,7 @@ export const StudentManagement: React.FC = () => {
                   <div className="mt-6">
                     <label className="text-[12px] font-bold text-[#6b7280] uppercase tracking-tight mb-2 block">Sessions</label>
                     <div className="space-y-2 max-h-32 overflow-y-auto border border-[#e5e7eb] rounded-lg p-3 bg-white">
-                      {!formData.ourGradeId ? (
+                      {!formData.gradeId ? (
                         <p className="text-sm text-[#6b7280] py-2 text-center">Select grade to see subjects and sessions</p>
                       ) : filteredSessions.length === 0 ? (
                         <p className="text-sm text-[#6b7280] py-2 text-center">No sessions available for this grade</p>
@@ -830,7 +806,7 @@ export const StudentManagement: React.FC = () => {
                     </button>
                   </div>
 
-                  {!formData.ourGradeId ? (
+                  {!formData.gradeId ? (
                     <div className="text-center py-8 text-[#6b7280]">
                       Select grade to see subjects and sessions
                     </div>
@@ -953,7 +929,7 @@ export const StudentManagement: React.FC = () => {
                       ) : null}
                       <div className="mt-3">
                         <span className="status-pill inline-block rounded-full bg-[#f3f4f6] px-3 py-1 text-xs font-semibold text-[#1f2937]">
-                          {gradeMap.get(selectedStudent.ourGradeId) || 'Grade —'}
+                          {gradeMap.get(selectedStudent.gradeId) || 'Grade —'}
                         </span>
                       </div>
                     </div>
@@ -1025,7 +1001,7 @@ export const StudentManagement: React.FC = () => {
                       <div>
                         <span className="mb-1 block font-medium text-[#6b7280]">Grade</span>
                         <span className="font-semibold text-[#1f2937]">
-                          {gradeMap.get(selectedStudent.ourGradeId) || '—'}
+                          {gradeMap.get(selectedStudent.gradeId) || '—'}
                         </span>
                       </div>
                       <div>
